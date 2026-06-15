@@ -11,6 +11,7 @@
 3. [Chat Completions API](#ml-ref-chat) — `[ML-REF-CHAT]`
 4. [Thinking Mode (Reasoning)](#ml-ref-thinking) — `[ML-REF-THINKING]`
 5. [Tool Calling Specs](#ml-ref-tools) — `[ML-REF-TOOLS]`
+6. [OpenAI Compatibility](#ml-ref-compat) — `[ML-REF-COMPAT]`
 
 ---
 
@@ -52,8 +53,8 @@ Pass the exact **Identifier** string in the `model` parameter of your chat compl
   * `name` (String, Optional): Participant identifier, required for tool execution results if mapping back.
   * `tool_calls` (Array, Optional): Included when the assistant requests function calls.
   * `tool_call_id` (String, Optional): Required when `role` is `tool`.
-* `thinking` (Boolean, Optional): Enable/disable chain-of-thought reasoning. Default is `false`.
-* `reasoning_effort` (String, Optional): OpenAI alias for thinking. Accepts `low`, `medium`, `high`. Maps to a boolean enable/disable under the hood.
+* `thinking` (Boolean, Optional): Enable (`true`) or disable (`false`) chain-of-thought reasoning. Default is off when omitted.
+* `reasoning_effort` (String, Optional): OpenAI-compatible alias accepting `low`, `medium`, or `high`. Per [MixLayer reasoning docs](https://docs.mixlayer.com/reasoning), distinct levels are reserved for future use. See [Thinking Mode](#ml-ref-thinking).
 * `temperature` (Float, Optional): Controls randomness. Range: `0.0` to `2.0`.
 * `top_p` (Float, Optional): Nucleus sampling threshold.
 * `top_k` (Integer, Optional): Keep only top K tokens.
@@ -61,7 +62,12 @@ Pass the exact **Identifier** string in the `model` parameter of your chat compl
 * `repetition_penalty` (Float, Optional): Penalty for repeating exact words.
 * `stream` (Boolean, Optional): If `true`, streams SSE tokens (`text/event-stream`).
 * `tools` (Array, Optional): A list of functions the model may call.
-* `response_format` (Object, Optional): e.g., `{"type": "json_object"}`.
+* `response_format` (Object, Optional): e.g., `{"type": "json_object"}` or `{"type": "json_schema", "json_schema": {...}}`.
+* `max_completion_tokens` (Integer, Optional): Maximum tokens to generate. Takes precedence over `max_tokens`.
+* `max_tokens` (Integer, Optional): Legacy alias for `max_completion_tokens`.
+* `stop` (Array of Strings, Optional): Sequences that halt generation when produced.
+* `seed` (Integer, Optional): Best-effort deterministic sampling.
+* `frequency_penalty` (Float, Optional): Penalizes tokens proportional to how often they have already appeared. Range: `-2.0` to `2.0`.
 
 ### Recommended Sampling Parameter Configurations
 
@@ -75,13 +81,51 @@ Pass the exact **Identifier** string in the `model` parameter of your chat compl
 
 ## <a name="ml-ref-thinking"></a>[ML-REF-THINKING] 4. Thinking Mode (Reasoning)
 
-MixLayer's Qwen models feature an internal chain-of-thought capability.
+MixLayer's Qwen models feature an internal chain-of-thought capability. When enabled, reasoning is returned in a separate `reasoning_content` field on the assistant message (or in `delta.reasoning_content` when streaming). The visible answer remains in `content`.
 
-### How to Toggle Thinking
-Enable thinking by passing `"thinking": true` (or `"reasoning_effort": "medium"`). To explicitly turn off thinking, pass `"thinking": false`.
+Canonical upstream reference: [docs.mixlayer.com/reasoning](https://docs.mixlayer.com/reasoning).
+
+### Non-Thinking (Default / Instruct Mode)
+
+Omit both `thinking` and `reasoning_effort` for standard instruct-style responses. The visible answer is in `content`.
+
+Some models may still populate `reasoning_content` on non-streaming responses even without thinking parameters (behavior can vary by model SKU or account tier). Use `thinking: false` to force it off, or ignore `reasoning_content` in your UI if you only want the final answer.
+
+```json
+{
+  "model": "qwen/qwen3.5-27b",
+  "messages": [{"role": "user", "content": "Why is the sky blue?"}],
+  "temperature": 0.7
+}
+```
+
+To explicitly disable thinking on a model that defaults to it, pass `"thinking": false`.
+
+### How to Enable Thinking
+
+| Approach | Example | Mixl API |
+| :--- | :--- | :--- |
+| MixLayer native | `"thinking": true` | `thinking: true` |
+| OpenAI-compatible alias | `"reasoning_effort": "low" \| "medium" \| "high"` | `reasoningEffort: .low` / `.medium` / `.high` |
+
+[MixLayer's reasoning docs](https://docs.mixlayer.com/reasoning) describe `reasoning_effort` as an OpenAI-compatible alias. Officially, distinct `low` / `medium` / `high` levels are **reserved for future use** and currently map to the same boolean enable/disable as `thinking: true`.
+
+When `thinking: true` or `reasoning_effort` is set on supported models, `reasoning_content` typically appears before `content` in streaming responses. Effort-level differences, if any, are model-dependent — verify against your target SKU (free-tier and smaller models may behave differently than larger production models).
+
+```swift
+// Explicit full reasoning (recommended):
+client.chat.createStream(..., thinking: true)
+
+// OpenAI-compatible alias:
+client.chat.createStream(..., reasoningEffort: .medium)
+```
 
 > [!IMPORTANT]
 > **API Constraint**: Thinking mode is incompatible with JSON schema validation (`response_format: {"type": "json_schema"}`). If structured output is required alongside thinking, use `response_format: {"type": "json_object"}` and prompt the model to write JSON.
+
+### Recommended Sampling (Thinking vs Non-Thinking)
+
+See the [Recommended Sampling Parameter Configurations](#ml-ref-chat) table. Thinking mode typically uses `temperature: 1.0`; instruct (non-thinking) mode often uses `temperature: 0.7`.
 
 ### Reading Non-Streaming Responses
 If thinking is enabled, the assistant message in the response choice will populate the custom `reasoning_content` field:
@@ -181,3 +225,51 @@ Submit the output in a follow-up request. You must send back all historical mess
   ]
 }
 ```
+
+---
+
+## <a name="ml-ref-compat"></a>[ML-REF-COMPAT] 6. OpenAI Compatibility
+
+MixLayer accepts the OpenAI Chat Completions shape, but not every OpenAI parameter is supported. The canonical upstream reference is [docs.mixlayer.com/chat-completions](https://docs.mixlayer.com/chat-completions).
+
+### Supported by Mixl (Phase 1)
+
+| Parameter | Mixl Property |
+| :--- | :--- |
+| `model` | `Model` / `ChatCompletionRequest.model` |
+| `messages` | `[Message]` |
+| `thinking` | `thinking` |
+| `reasoning_effort` | `reasoningEffort` (`ReasoningEffort`) |
+| `temperature`, `top_p`, `top_k` | `temperature`, `topP`, `topK` |
+| `frequency_penalty`, `presence_penalty`, `repetition_penalty` | `frequencyPenalty`, `presencePenalty`, `repetitionPenalty` |
+| `max_completion_tokens`, `max_tokens` | `maxCompletionTokens`, `maxTokens` |
+| `stop`, `seed`, `stream` | `stop`, `seed`, `stream` |
+| `tools` | `tools` |
+| `response_format` | `responseFormat` (`.text`, `.jsonObject`, `.jsonSchema`) |
+
+### Not Supported by MixLayer (omit from Mixl)
+
+These OpenAI parameters are accepted by some gateways but are **silently ignored** by MixLayer. Mixl intentionally does not expose them:
+
+- `tool_choice` — the model decides whether to call a tool based on `tools` and the conversation. Prompt explicitly if you need to force a tool.
+- `n` — multiple completions per request
+- `min_p` — minimum probability sampling
+- `logprobs`, `top_logprobs`
+- `user`
+- `logit_bias`
+
+### Error Envelope
+
+MixLayer returns OpenAI-style errors:
+
+```json
+{
+  "error": {
+    "message": "Model not found.",
+    "type": "model_not_found",
+    "code": "model_not_found"
+  }
+}
+```
+
+Mixl surfaces these as `MixLayerError.httpError(statusCode:apiError:)`.
