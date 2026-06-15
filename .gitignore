@@ -1,0 +1,28 @@
+# Xcode
+#
+# Reference: https://github.com/github/gitignore/blob/main/Swift.gitignore
+
+# Build artifacts
+build/
+DerivedData/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Xcode personal state
+*.xcuserstate
+xcuserdata/
+*.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Local Environment Variables
+.env
+.env.*
