@@ -108,6 +108,12 @@ Use this checklist to track development milestones:
   - [x] Availability checks and distinct unsupported vs unavailable errors.
   - [x] Stateless `LanguageModelSession` per request; streaming via `streamResponse`.
   - [x] Local examples and docs (`README`, `MIXLAYER.md`).
+- [x] **Orchestrator & Routing Client**
+  - [x] `MixlClient` orchestrator client conforming to `MixlService`.
+  - [x] `MixlRouter` protocol defining routing decisions.
+  - [x] `MixlDefaultRouter` for automatic model routing.
+  - [x] Dynamic backend extensions for `.cloud` and platform-gated `.local`.
+  - [x] Unified router examples in CLI.
 
 ---
 

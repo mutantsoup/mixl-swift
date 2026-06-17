@@ -1,6 +1,6 @@
 # Mixl Roadmap
 
-Phase 1 is **shipped** (`0.1.0`). Later phases below are **sketches** — not implemented until they land in code. See **Potential Use Cases** for product ideas under consideration.
+Phase 1 (`0.1.0`), Phase 2 (`0.2.0`), and Phase 3 (`0.3.0`) are **shipped**. Later items are **sketches** — not implemented until they land in code. See **Potential Use Cases** for product ideas under consideration.
 
 ---
 
@@ -20,7 +20,7 @@ Phase 1 is **shipped** (`0.1.0`). Later phases below are **sketches** — not im
 
 ---
 
-## Phase 2 (in progress)
+## Phase 2 (shipped — `0.2.0`)
 
 - **`LocalClient`** — on-device inference via Apple’s **Foundation Models** framework (`LanguageModelSession` / `SystemLanguageModel`), same `chat.create` / `createStream` API shape as `MixLayerClient` (no API key).
 - **`Model.appleFoundation`** — `apple/foundation` identifier with `Model.provider` routing metadata for Phase 3.
@@ -33,9 +33,13 @@ Phase 1 is **shipped** (`0.1.0`). Later phases below are **sketches** — not im
 
 ---
 
-## Phase 3 (sketch)
+## Phase 3 (shipped — `0.3.0`)
 
-- **`MixlClient` orchestrator** (name TBD) — routes `chat.create` / `createStream` to **MixLayer cloud** or **local** based on `Model` (and availability).
+- **`MixlClient` orchestrator** — routes `chat.create` / `createStream` to **MixLayer cloud** or **local** based on `Model` (and availability). Conforms to `MixlService`, so it can be injected anywhere a backend is expected.
+- **`MixlRouter` protocol** with `MixlRoutingContext` / `MixlRoutingDecision`, plus **`MixlDefaultRouter`** — routes `.appleFoundation` to local, everything else to cloud.
+- **Availability-aware default routing** — when a request targets local but on-device inference is unavailable, the default router throws `MixlError.localModelUnavailable` instead of silently routing `apple/foundation` to the cloud (which does not host it). Custom routers can implement cloud substitution via `MixlRoutingContext.isLocalAvailable`.
+- **Backend escape hatches** — `MixlClient.cloud` (`MixLayerClient`) and platform-gated `MixlClient.local` (`LocalClient`) bypass the router for guaranteed targeting.
+- **`MixlExamples`** — unified orchestrator menu demonstrating router-based cloud/local routing, the direct `client.cloud` / `client.local` accessors, and a run-all option.
 - Same public types: `Message`, `Model`, `ChatCompletionRequest`, etc.
 
 ---

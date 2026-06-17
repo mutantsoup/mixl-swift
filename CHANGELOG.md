@@ -51,5 +51,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Adopted consistent type naming: **`Mixl*`** (framework/shared), **`MixLayer*`** (cloud), **`Local*`** (on-device)—including `MixlChatCompletionsService`, `MixlModelProvider`, `MixLayerAPIService`, `LocalInferenceService`, and related internals.
 - **Local parameter policy:** cloud-only sampling/reasoning parameters are stripped with `os.Logger` info messages; `tools`, JSON `response_format`, and tool messages remain strict (`MixlError.unsupportedParameter`).
 
+## [0.3.0] - 2026-06-17
+
+### Added
+
+- **`MixlClient`** — unified orchestrator that routes `chat.create` / `chat.createStream` to the MixLayer cloud or on-device local backend based on the requested `Model`. Conforms to `MixlService` and accepts injectable cloud/local services for testing.
+- **`MixlRouter`** protocol with `MixlRoutingContext` and `MixlRoutingDecision`, plus **`MixlDefaultRouter`** for automatic model-based routing.
+- **Availability-aware default routing** — `MixlDefaultRouter` throws `MixlError.localModelUnavailable` when a request targets `.appleFoundation` but on-device inference is unavailable, rather than routing the unsupported model to the cloud. An injected local service is treated as available so test doubles route deterministically.
+- **`MixlClient.cloud`** and platform-gated **`MixlClient.local`** accessors to bypass the router and target a specific backend.
+- **`MixlExamples`** unified orchestrator menu demonstrating router-based cloud/local routing, the direct `client.cloud` / `client.local` accessors, and a run-all option.
+- `MixlClientTests` covering default/custom routing, streaming, availability-aware fail-fast behavior, and routing-context computation.
+
+[0.3.0]: https://github.com/mutantsoup/mixl-swift/releases/tag/0.3.0
 [0.2.0]: https://github.com/mutantsoup/mixl-swift/releases/tag/0.2.0
 [0.1.0]: https://github.com/mutantsoup/mixl-swift/releases/tag/0.1.0

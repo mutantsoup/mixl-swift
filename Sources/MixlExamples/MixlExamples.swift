@@ -19,9 +19,10 @@ struct ExamplesApp {
             Please select a backend:
             1. MixLayer Cloud Examples (requires MIXLAYER_API_KEY)
             2. Local Foundation Models Examples (on-device, no API key)\(localExamplesAvailabilityNote())
-            3. Quit
+            3. Unified Orchestrator Examples (MixlClient - routes automatically)
+            4. Quit
 
-            Enter selection (1-3):
+            Enter selection (1-4):
             """, terminator: "")
 
             guard let input = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines) else {
@@ -34,10 +35,12 @@ struct ExamplesApp {
             case "2":
                 await runLocalExamplesMenu()
             case "3":
+                await runOrchestratorExamplesMenu()
+            case "4":
                 print("\nGoodbye! 👋")
                 shouldQuit = true
             default:
-                print("\n⚠️ Invalid selection. Please enter a number between 1 and 3.")
+                print("\n⚠️ Invalid selection. Please enter a number between 1 and 4.")
                 await waitForEnter()
             }
         }
@@ -235,11 +238,13 @@ struct ExamplesApp {
         }
 
         do {
+            let start = Date()
             let response = try await client.chat.create(
                 model: model,
                 messages: messages,
                 temperature: 0.7
             )
+            let duration = Date().timeIntervalSince(start)
 
             if let content = response.choices.first?.message.content {
                 print("\n✨ Model Response:")
@@ -247,6 +252,7 @@ struct ExamplesApp {
             } else {
                 print("\n⚠️ No content returned.")
             }
+            print(String(format: "\n⏱️ Time taken: %.3f seconds", duration))
         } catch {
             print("\n❌ Error running local chat completion: \(error)")
         }
@@ -267,6 +273,7 @@ struct ExamplesApp {
         }
 
         do {
+            let start = Date()
             let stream = try await client.chat.createStream(
                 model: model,
                 messages: messages,
@@ -281,8 +288,256 @@ struct ExamplesApp {
                 }
             }
             print()
+            let duration = Date().timeIntervalSince(start)
+            print(String(format: "\n⏱️ Time taken: %.3f seconds (total streaming time)", duration))
         } catch {
             print("\n❌ Error running local stream: \(error)")
+        }
+    }
+
+    // MARK: - Orchestrator Examples
+
+    private static func runOrchestratorExamplesMenu() async {
+        guard let apiKey = ProcessInfo.processInfo.environment["MIXLAYER_API_KEY"], !apiKey.isEmpty else {
+            print("""
+            ===================================================================
+            ❌ Error: MIXLAYER_API_KEY environment variable is not set.
+
+            The unified orchestrator requires MIXLAYER_API_KEY to instantiate
+            the cloud routing client. Please set it in your environment:
+               export MIXLAYER_API_KEY="your_api_key_here"
+            ===================================================================
+            """)
+            await waitForEnter()
+            return
+        }
+
+        let client = MixlClient(apiKey: apiKey)
+        var shouldReturn = false
+
+        while !shouldReturn {
+            print("""
+
+            --- Unified Orchestrator (MixlClient) Examples ---
+            API Key detected: \(String(apiKey.prefix(4)))****************\(String(apiKey.suffix(4)))
+
+            1. Route Cloud model (\(exampleModel.rawValue)) -> Cloud Client
+            2. Route Local model (apple/foundation) -> Local Client\(localOrchestratorAvailabilityNote())
+            3. Direct cloud access (client.cloud) — bypass the router
+            4. Direct local access (client.local) — bypass the router\(localOrchestratorAvailabilityNote())
+            5. Run All Orchestrator Examples
+            6. Back to main menu
+
+            Enter selection (1-6):
+            """, terminator: "")
+
+            guard let input = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+                continue
+            }
+
+            switch input {
+            case "1":
+                await runOrchestratedCloudCompletion(client: client)
+                await waitForEnter()
+            case "2":
+                if #available(iOS 26.0, macOS 26.0, visionOS 26.0, watchOS 26.0, tvOS 26.0, *) {
+                    if let reason = LocalModelSupport.unavailabilityReason() {
+                        print("""
+                        ===================================================================
+                        ❌ On-device model unavailable: \(reason.rawValue)
+                           \(LocalModelSupport.message(for: reason))
+                        ===================================================================
+                        """)
+                    } else {
+                        await runOrchestratedLocalCompletion(client: client)
+                    }
+                } else {
+                    print("\n❌ Local model requires iOS 26.0+ / macOS 26.0+.")
+                }
+                await waitForEnter()
+            case "3":
+                await runDirectCloudCompletion(client: client)
+                await waitForEnter()
+            case "4":
+                if #available(iOS 26.0, macOS 26.0, visionOS 26.0, watchOS 26.0, tvOS 26.0, *) {
+                    if let reason = LocalModelSupport.unavailabilityReason() {
+                        print("""
+                        ===================================================================
+                        ❌ On-device model unavailable: \(reason.rawValue)
+                           \(LocalModelSupport.message(for: reason))
+                        ===================================================================
+                        """)
+                    } else {
+                        await runDirectLocalCompletion(client: client)
+                    }
+                } else {
+                    print("\n❌ Local model requires iOS 26.0+ / macOS 26.0+.")
+                }
+                await waitForEnter()
+            case "5":
+                await runAllOrchestratorExamples(client: client)
+                await waitForEnter()
+            case "6":
+                shouldReturn = true
+            default:
+                print("\n⚠️ Invalid selection. Please enter a number between 1 and 6.")
+                await waitForEnter()
+            }
+        }
+    }
+
+    private static func localOrchestratorAvailabilityNote() -> String {
+        guard isLocalExamplesRuntimeAvailable else {
+            return "\n   (requires macOS 26+ / iOS 26+ with Foundation Models)"
+        }
+        if let reason = LocalModelSupport.unavailabilityReason() {
+            return "\n   (device status: \(reason.rawValue))"
+        }
+        return ""
+    }
+
+    private static func runOrchestratedCloudCompletion(client: MixlClient) async {
+        print("\n[Orchestrator Example 1] Routing Cloud model (\(exampleModel.rawValue))...")
+        let messages: [Message] = [
+            .system("You are a helpful assistant that answers concisely."),
+            .user("Explain in one sentence why routing between cloud and local is useful.")
+        ]
+        print("\n💬 Input Prompt:")
+        for msg in messages {
+            print("  [\(msg.role.rawValue.uppercased())]: \(msg.content ?? "")")
+        }
+        do {
+            let start = Date()
+            let response = try await client.chat.create(
+                model: exampleModel,
+                messages: messages
+            )
+            let duration = Date().timeIntervalSince(start)
+            print("\n✨ Routed Response:")
+            print(response.choices.first?.message.content ?? "")
+            print(String(format: "\n⏱️ Time taken: %.3f seconds", duration))
+        } catch {
+            print("\n❌ Error: \(error)")
+        }
+    }
+
+    private static func runOrchestratedLocalCompletion(client: MixlClient) async {
+        print("\n[Orchestrator Example 2] Routing Local model (apple/foundation)...")
+        let messages: [Message] = [
+            .system("You are a helpful assistant that answers concisely."),
+            .user("Explain in one sentence why on-device processing is secure.")
+        ]
+        print("\n💬 Input Prompt:")
+        for msg in messages {
+            print("  [\(msg.role.rawValue.uppercased())]: \(msg.content ?? "")")
+        }
+        do {
+            let start = Date()
+            let response = try await client.chat.create(
+                model: .appleFoundation,
+                messages: messages
+            )
+            let duration = Date().timeIntervalSince(start)
+            print("\n✨ Routed Response:")
+            print(response.choices.first?.message.content ?? "")
+            print(String(format: "\n⏱️ Time taken: %.3f seconds", duration))
+        } catch {
+            print("\n❌ Error: \(error)")
+        }
+    }
+
+    private static func runDirectCloudCompletion(client: MixlClient) async {
+        print("\n[Orchestrator Example 3] Direct cloud access via client.cloud (router bypassed)...")
+        print("Reaching the MixLayer cloud client directly, guaranteeing cloud execution.")
+        let messages: [Message] = [
+            .system("You are a helpful assistant that answers concisely."),
+            .user("In one sentence, when would you bypass the router and call the cloud directly?")
+        ]
+        print("\n💬 Input Prompt:")
+        for msg in messages {
+            print("  [\(msg.role.rawValue.uppercased())]: \(msg.content ?? "")")
+        }
+        do {
+            let start = Date()
+            let response = try await client.cloud.chat.create(
+                model: exampleModel,
+                messages: messages
+            )
+            let duration = Date().timeIntervalSince(start)
+            print("\n✨ Direct Cloud Response:")
+            print(response.choices.first?.message.content ?? "")
+            print(String(format: "\n⏱️ Time taken: %.3f seconds", duration))
+        } catch {
+            print("\n❌ Error: \(error)")
+        }
+    }
+
+    @available(iOS 26.0, macOS 26.0, visionOS 26.0, watchOS 26.0, tvOS 26.0, *)
+    private static func runDirectLocalCompletion(client: MixlClient) async {
+        print("\n[Orchestrator Example 4] Direct local access via client.local (router bypassed)...")
+        print("Reaching the on-device client directly, guaranteeing local execution.")
+        let messages: [Message] = [
+            .system("You are a helpful assistant that answers concisely."),
+            .user("In one sentence, when would you bypass the router and run on-device directly?")
+        ]
+        print("\n💬 Input Prompt:")
+        for msg in messages {
+            print("  [\(msg.role.rawValue.uppercased())]: \(msg.content ?? "")")
+        }
+        do {
+            let start = Date()
+            let response = try await client.local.chat.create(
+                model: .appleFoundation,
+                messages: messages
+            )
+            let duration = Date().timeIntervalSince(start)
+            print("\n✨ Direct Local Response:")
+            print(response.choices.first?.message.content ?? "")
+            print(String(format: "\n⏱️ Time taken: %.3f seconds", duration))
+        } catch {
+            print("\n❌ Error: \(error)")
+        }
+    }
+
+    private static func runAllOrchestratorExamples(client: MixlClient) async {
+        print("\n--- Running All Orchestrator Examples ---")
+
+        await runOrchestratedCloudCompletion(client: client)
+        print("\n----------------------------")
+
+        await runOrchestratedLocalIfAvailable(client: client)
+        print("\n----------------------------")
+
+        await runDirectCloudCompletion(client: client)
+        print("\n----------------------------")
+
+        await runDirectLocalIfAvailable(client: client)
+        print("\n----------------------------")
+
+        print("All orchestrator examples completed!")
+    }
+
+    private static func runOrchestratedLocalIfAvailable(client: MixlClient) async {
+        if #available(iOS 26.0, macOS 26.0, visionOS 26.0, watchOS 26.0, tvOS 26.0, *) {
+            if let reason = LocalModelSupport.unavailabilityReason() {
+                print("\n⏭️ Skipping routed local example — on-device model unavailable: \(reason.rawValue)")
+            } else {
+                await runOrchestratedLocalCompletion(client: client)
+            }
+        } else {
+            print("\n⏭️ Skipping routed local example — requires iOS 26.0+ / macOS 26.0+.")
+        }
+    }
+
+    private static func runDirectLocalIfAvailable(client: MixlClient) async {
+        if #available(iOS 26.0, macOS 26.0, visionOS 26.0, watchOS 26.0, tvOS 26.0, *) {
+            if let reason = LocalModelSupport.unavailabilityReason() {
+                print("\n⏭️ Skipping direct local example — on-device model unavailable: \(reason.rawValue)")
+            } else {
+                await runDirectLocalCompletion(client: client)
+            }
+        } else {
+            print("\n⏭️ Skipping direct local example — requires iOS 26.0+ / macOS 26.0+.")
         }
     }
 
@@ -304,11 +559,13 @@ struct ExamplesApp {
         }
 
         do {
+            let start = Date()
             let response = try await client.chat.create(
                 model: exampleModel,
                 messages: messages,
                 temperature: 0.7
             )
+            let duration = Date().timeIntervalSince(start)
 
             let message = response.choices.first?.message
             if let content = message?.content {
@@ -317,6 +574,7 @@ struct ExamplesApp {
             } else {
                 print("\n⚠️ No content returned.")
             }
+            print(String(format: "\n⏱️ Time taken: %.3f seconds", duration))
 
             if let reasoning = message?.reasoningContent, !reasoning.isEmpty {
                 print("\nℹ️ reasoningContent was also returned (\(reasoning.count) chars).")
@@ -343,6 +601,7 @@ struct ExamplesApp {
         }
 
         do {
+            let start = Date()
             let stream = try await client.chat.createStream(
                 model: exampleModel,
                 messages: messages,
@@ -373,6 +632,8 @@ struct ExamplesApp {
                 }
             }
             print()
+            let duration = Date().timeIntervalSince(start)
+            print(String(format: "\n⏱️ Time taken: %.3f seconds (total streaming time)", duration))
 
             if !receivedReasoning {
                 print("\nℹ️ No reasoningContent deltas received in this stream.")
@@ -419,11 +680,13 @@ struct ExamplesApp {
         }
 
         do {
+            let start1 = Date()
             let response = try await client.chat.create(
                 model: exampleModel,
                 messages: messages,
                 tools: [timeTool]
             )
+            let duration1 = Date().timeIntervalSince(start1)
 
             guard let choice = response.choices.first else {
                 print("❌ No choices returned from model")
@@ -434,6 +697,7 @@ struct ExamplesApp {
                 print("\n🔧 Model Requested Tool Execution:")
                 print("   Tool Name: \(toolCall.function.name)")
                 print("   Arguments: \(toolCall.function.arguments)")
+                print(String(format: "\n⏱️ Initial request time (tool call request): %.3f seconds", duration1))
 
                 let decodedArgs = try toolCall.function.decodeArguments(as: TimezoneArgs.self)
                 print("   Decoded City: \(decodedArgs.city)")
@@ -457,18 +721,22 @@ struct ExamplesApp {
                     }
                 }
 
+                let start2 = Date()
                 let finalResponse = try await client.chat.create(
                     model: exampleModel,
                     messages: followUpMessages
                 )
+                let duration2 = Date().timeIntervalSince(start2)
 
                 if let content = finalResponse.choices.first?.message.content {
                     print("\n✨ Model Response (Conditional on Tool Output):")
                     print(content)
                 }
+                print(String(format: "\n⏱️ Second request time (after tool execution): %.3f seconds", duration2))
             } else if let content = choice.message.content {
                 print("\n✨ Model Response (No Tool Call Needed):")
                 print(content)
+                print(String(format: "\n⏱️ Request time: %.3f seconds", duration1))
             }
         } catch {
             print("\n❌ Error running Tool Calling: \(error)")
