@@ -14,7 +14,10 @@ public enum ReasoningEffort: String, Codable, Sendable {
     case high
 }
 
-/// A structure representing a request payload for the MixLayer Chat Completions API.
+/// A structure representing a chat completion request payload.
+///
+/// Shared by ``MixLayerClient`` and ``LocalClient``. Parameter support varies by backend—see
+/// <doc:LocalInference> and `MIXLAYER.md`.
 public struct ChatCompletionRequest: Codable, Sendable, Equatable {
     /// The model name string identifier.
     public let model: String

@@ -27,7 +27,7 @@ Design the library using a modular structure with unidirectional data flow and s
 
 ```mermaid
 graph TD
-    Client[MixLayerClient] --> ChatService[ChatCompletionsService]
+    Client[MixLayerClient] --> ChatService[MixlChatCompletionsService]
     ChatService --> RequestModel[ChatCompletionRequest]
     ChatService --> NetworkEngine[NetworkEngine / URLSession]
     NetworkEngine --> StreamParser[SSE Stream Parser]
@@ -37,7 +37,7 @@ graph TD
 ### 1. Networking Layer
 * Use `URLSession` for network requests. Avoid third-party networking libraries like Alamofire unless explicitly requested.
 * Use `async/await` for asynchronous operations.
-* Wrap all networking errors in a custom `MixLayerError` enum.
+* Wrap all networking errors in a custom `MixlError` enum.
 
 ### 2. Stream Parsing (SSE)
 * Handle streaming with Swift's modern `AsyncThrowingStream`.
@@ -69,9 +69,10 @@ When writing Swift code, adhere strictly to these conventions:
 
 To prevent divergence between test environments and actual network clients:
 
-* **Interface Integrity**: The `MixLayerService` protocol acts as the source of truth. Any modifications or additions of API methods to `MixLayerService` must be made simultaneously in both `APIService` (production) and `MockMixLayerService` (`MixlTesting` product).
-* **Mock Actor Alignment**: `MockMixLayerService` (in `Sources/MixlTesting/`) is implemented as an `actor` to maintain thread-safe state access under strict concurrency checks. Keep its properties (such as `lastRequest`, `stubbedResponse`, and `stubbedError`) aligned with incoming requests and error stubs.
-* **URLProtocol Validation**: When changing request parameter mappings in `APIService`, always write matching tests in `NetworkTests` using `MockURLProtocol` to assert HTTP headers, methods, endpoints, and body encodings.
+* **Naming conventions**: Use **`Mixl*`** for framework-level shared types (`MixlService`, `MixlError`, `MixlChatCompletionsService`, `MixlModelProvider`, `MockMixlService`). Use **`MixLayer*`** for cloud-only types (`MixLayerClient`, `MixLayerAPIService`, `MixLayerAPIErrorResponse`). Use **`Local*`** for on-device types (`LocalClient`, `LocalInferenceService`, `LocalPromptBuilder`, `LocalModelSupport`). Shared OpenAI-compatible payload types (`Message`, `Model`, `ChatCompletionRequest`, etc.) remain unprefixed inside the `Mixl` module.
+* **Interface Integrity**: The `MixlService` protocol acts as the source of truth. Any modifications or additions of API methods to `MixlService` must be made simultaneously in both `MixLayerAPIService` (production), `LocalInferenceService` (local), and `MockMixlService` (`MixlTesting` product).
+* **Mock Actor Alignment**: `MockMixlService` (in `Sources/MixlTesting/`) is implemented as an `actor` to maintain thread-safe state access under strict concurrency checks. Keep its properties (such as `lastRequest`, `stubbedResponse`, and `stubbedError`) aligned with incoming requests and error stubs.
+* **URLProtocol Validation**: When changing request parameter mappings in `MixLayerAPIService`, always write matching tests in `NetworkTests` using `MockURLProtocol` to assert HTTP headers, methods, endpoints, and body encodings.
 * **Value Consistency**: Do not change request or response struct properties in test mock payloads without validating matching updates to production codables in the library target.
 
 ---
@@ -100,6 +101,13 @@ Use this checklist to track development milestones:
   - [x] Create interactive command-line app target (`MixlExamples`).
   - [x] Implement standard completion, streaming reasoning, and tool execution examples.
   - [x] Add standard MIT `LICENSE` file.
+- [x] **Local Foundation Models**
+  - [x] `LocalClient` with same API shape as `MixLayerClient` (no API key).
+  - [x] `LocalInferenceService` conforming to `MixlService`.
+  - [x] `Model.appleFoundation` and `MixlModelProvider` backend metadata.
+  - [x] Availability checks and distinct unsupported vs unavailable errors.
+  - [x] Stateless `LanguageModelSession` per request; streaming via `streamResponse`.
+  - [x] Local examples and docs (`README`, `MIXLAYER.md`).
 
 ---
 

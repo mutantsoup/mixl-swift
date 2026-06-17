@@ -8,7 +8,7 @@ final class NetworkTests: XCTestCase {
         MockURLProtocol.requestHandler = nil
     }
     
-    func testAPIServiceNormalCompletion() async throws {
+    func testMixLayerAPIServiceNormalCompletion() async throws {
         // Given
         let apiKey = "test-api-key"
         let baseURL = URL(string: "https://models.mixlayer.ai/v1")!
@@ -75,7 +75,7 @@ final class NetworkTests: XCTestCase {
         configuration.protocolClasses = [MockURLProtocol.self]
         let mockSession = URLSession(configuration: configuration)
         
-        let apiService = APIService(apiKey: apiKey, baseURL: baseURL, session: mockSession)
+        let apiService = MixLayerAPIService(apiKey: apiKey, baseURL: baseURL, session: mockSession)
         
         // When
         let request = ChatCompletionRequest(model: "qwen/qwen3.5-27b", messages: [.user("Hello")])
@@ -86,7 +86,7 @@ final class NetworkTests: XCTestCase {
         XCTAssertEqual(response.choices.first?.message.content, "Mocked response content")
     }
     
-    func testAPIServiceStreamingCompletion() async throws {
+    func testMixLayerAPIServiceStreamingCompletion() async throws {
         // Given
         let apiKey = "test-api-key"
         let baseURL = URL(string: "https://models.mixlayer.ai/v1")!
@@ -115,7 +115,7 @@ final class NetworkTests: XCTestCase {
         configuration.protocolClasses = [MockURLProtocol.self]
         let mockSession = URLSession(configuration: configuration)
         
-        let apiService = APIService(apiKey: apiKey, baseURL: baseURL, session: mockSession)
+        let apiService = MixLayerAPIService(apiKey: apiKey, baseURL: baseURL, session: mockSession)
         
         // When
         let request = ChatCompletionRequest(model: "qwen/qwen3.5-27b", messages: [.user("Hello")], stream: true)
@@ -132,7 +132,7 @@ final class NetworkTests: XCTestCase {
         XCTAssertEqual(chunks[1].choices.first?.delta.content, "Hi")
     }
     
-    func testAPIServiceHTTPErrorParsing() async throws {
+    func testMixLayerAPIServiceHTTPErrorParsing() async throws {
         let apiKey = "test-api-key"
         let baseURL = URL(string: "https://models.mixlayer.ai/v1")!
 
@@ -160,19 +160,19 @@ final class NetworkTests: XCTestCase {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockURLProtocol.self]
         let mockSession = URLSession(configuration: configuration)
-        let apiService = APIService(apiKey: apiKey, baseURL: baseURL, session: mockSession)
+        let apiService = MixLayerAPIService(apiKey: apiKey, baseURL: baseURL, session: mockSession)
 
         do {
             _ = try await apiService.createChatCompletion(
                 request: ChatCompletionRequest(model: "missing/model", messages: [.user("Hello")])
             )
-            XCTFail("Expected MixLayerError to be thrown")
-        } catch let error as MixLayerError {
+            XCTFail("Expected MixlError to be thrown")
+        } catch let error as MixlError {
             XCTAssertEqual(
                 error,
                 .httpError(
                     statusCode: 404,
-                    apiError: APIErrorResponse(
+                    apiError: MixLayerAPIErrorResponse(
                         message: "Model not found.",
                         type: "model_not_found",
                         code: "model_not_found"
@@ -205,12 +205,11 @@ final class NetworkTests: XCTestCase {
         XCTAssertTrue(json.contains("\"response_format\":{\"type\":\"json_object\"}"))
     }
 
-    func testAPIServiceIntegrationTest() async throws {
+    func testMixLayerAPIServiceIntegrationTest() async throws {
         // Gated: Only run this integration test if real API key is set in environmental variables
         guard let apiKey = ProcessInfo.processInfo.environment["MIXLAYER_API_KEY"], !apiKey.isEmpty else {
             throw XCTSkip("MIXLAYER_API_KEY environment variable not set.")
         }
-        
         let client = MixLayerClient(apiKey: apiKey)
         
         // 1. Test standard chat completions

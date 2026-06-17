@@ -1,8 +1,8 @@
 import Foundation
 import Mixl
 
-/// A thread-safe mock implementation of ``MixLayerService`` for unit tests and previews.
-public actor MockMixLayerService: MixLayerService {
+/// A thread-safe mock implementation of `MixlService` for unit tests and previews.
+public actor MockMixlService: MixlService {
     /// The most recent chat completion request received by the mock.
     public var lastRequest: ChatCompletionRequest?
 
@@ -41,7 +41,7 @@ public actor MockMixLayerService: MixLayerService {
         if let response = stubbedResponse {
             return response
         }
-        throw MockMixLayerServiceError.noStubbedResponse
+        throw MockMixlServiceError.noStubbedResponse
     }
 
     public func createChatCompletionStream(
@@ -63,7 +63,7 @@ public actor MockMixLayerService: MixLayerService {
 }
 
 /// Errors thrown when a mock service is invoked without required stub configuration.
-public enum MockMixLayerServiceError: Error, Sendable, Equatable {
+public enum MockMixlServiceError: Error, Sendable, Equatable {
     /// No stubbed response or error was configured for a non-streaming request.
     case noStubbedResponse
 }

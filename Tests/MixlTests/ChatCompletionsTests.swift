@@ -7,7 +7,7 @@ import XCTest
 final class ChatCompletionsTests: XCTestCase {
     func testChatCompletionSuccess() async throws {
         // Given
-        let mockService = MockMixLayerService()
+        let mockService = MockMixlService()
         let expectedResponse = ChatCompletionResponse(
             id: "chatcmpl-123",
             object: "chat.completion",
@@ -49,7 +49,7 @@ final class ChatCompletionsTests: XCTestCase {
     
     func testChatCompletionFailure() async throws {
         // Given
-        let mockService = MockMixLayerService()
+        let mockService = MockMixlService()
         let expectedError = NSError(domain: "test", code: 456, userInfo: nil)
         await mockService.setStubbedError(expectedError)
         

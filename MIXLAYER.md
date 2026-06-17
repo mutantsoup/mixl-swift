@@ -12,6 +12,7 @@
 4. [Thinking Mode (Reasoning)](#ml-ref-thinking) — `[ML-REF-THINKING]`
 5. [Tool Calling Specs](#ml-ref-tools) — `[ML-REF-TOOLS]`
 6. [OpenAI Compatibility](#ml-ref-compat) — `[ML-REF-COMPAT]`
+7. [Local Backend (Foundation Models)](#ml-ref-local) — `[ML-REF-LOCAL]`
 
 ---
 
@@ -232,7 +233,7 @@ Submit the output in a follow-up request. You must send back all historical mess
 
 MixLayer accepts the OpenAI Chat Completions shape, but not every OpenAI parameter is supported. The canonical upstream reference is [docs.mixlayer.com/chat-completions](https://docs.mixlayer.com/chat-completions).
 
-### Supported by Mixl (Phase 1)
+### Supported by Mixl
 
 | Parameter | Mixl Property |
 | :--- | :--- |
@@ -272,4 +273,55 @@ MixLayer returns OpenAI-style errors:
 }
 ```
 
-Mixl surfaces these as `MixLayerError.httpError(statusCode:apiError:)`.
+Mixl surfaces these as `MixlError.httpError(statusCode:apiError:)`.
+
+---
+
+## <a name="ml-ref-local"></a>[ML-REF-LOCAL] 7. Local Backend (Foundation Models)
+
+Mixl’s **`LocalClient`** runs chat completions on-device via Apple’s **Foundation Models** framework (`LanguageModelSession` / `SystemLanguageModel`). It uses the same `chat.create` / `chat.createStream` API shape as **`MixLayerClient`**, but does not require a MixLayer API key.
+
+### Requirements
+
+| Requirement | Details |
+| :--- | :--- |
+| **OS** | iOS 26+, macOS 26+, visionOS 26+, watchOS 26+, tvOS 26+ (`@available` on `LocalClient`) |
+| **Framework** | `FoundationModels` (Xcode 26 SDK). CI builds without the framework use a stub backend that throws `localModelUnavailable(.frameworkNotAvailable)`. |
+| **Device** | Apple Intelligence-capable hardware with on-device model assets downloaded |
+| **Model identifier** | `apple/foundation` (`Model.appleFoundation`) |
+
+Check availability before calling inference:
+
+```swift
+if let reason = LocalModelSupport.unavailabilityReason() {
+    // Show UI: LocalModelSupport.message(for: reason)
+}
+```
+
+### Error Semantics
+
+| Error | Meaning |
+| :--- | :--- |
+| `MixlError.modelNotSupported(model:backend:)` | Wrong model for this client (e.g. cloud Qwen model passed to `LocalClient`). |
+| `MixlError.localModelUnavailable(reason:message:)` | Correct model/client, but the device or OS cannot run on-device inference (ineligible device, Apple Intelligence off, model not ready, framework missing). |
+| `MixlError.unsupportedParameter(_:)` | Semantic mismatch on local path: `tools`, JSON `response_format`, or tool messages. Sampling/reasoning params are stripped with an `os.Logger` message instead. |
+| `MixlError.localInferenceFailed(_:)` | Inference failed after availability checks passed. |
+
+### Parameter Compatibility (Local vs Cloud)
+
+| Parameter | MixLayer Cloud | Local (`LocalClient`) |
+| :--- | :---: | :---: |
+| `messages` | ✅ | ✅ (system / user / assistant only; tool messages **strict**) |
+| `temperature` | ✅ | ✅ |
+| `maxCompletionTokens` / `maxTokens` | ✅ | ✅ (maps to `maximumResponseTokens`) |
+| `stream` | ✅ | ✅ (`createStream`) |
+| `thinking` / `reasoningEffort` | ✅ | stripped (logged) |
+| `top_p`, `top_k`, penalties, `stop`, `seed` | ✅ | stripped (logged) |
+| `tools` / tool messages | ✅ | **strict** (throws) |
+| `responseFormat` (JSON) | ✅ | **strict** (throws; text only) |
+
+### Design Notes
+
+- **Stateless:** Each request creates a new `LanguageModelSession` (no conversation persistence in Mixl).
+- **Streaming:** Local streaming uses Foundation Models `streamResponse`; Mixl emits OpenAI-style `ChatCompletionChunk` deltas.
+- A future orchestrator will route by `Model.provider` to `MixLayerClient` or `LocalClient`.

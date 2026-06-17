@@ -24,9 +24,10 @@ Please read [AGENTS.md](AGENTS.md) before making changes. It documents the proje
 
 Key expectations:
 
-- Keep `MixLayerService`, `APIService`, and `MockMixLayerService` in sync.
+- Keep `MixlService`, `MixLayerAPIService`, `LocalInferenceService`, and `MockMixlService` in sync.
+- Follow naming conventions: **`Mixl*`** (framework shared), **`MixLayer*`** (cloud), **`Local*`** (on-device). See [AGENTS.md](AGENTS.md#ag-sync).
 - Use `async/await`; do not add completion-handler APIs.
-- Throw typed `MixLayerError` values from networking code.
+- Throw typed `MixlError` values from networking code.
 - Add or update tests when changing request mappings or response models.
 - Only expose request parameters that are documented as supported by [MixLayer](https://docs.mixlayer.com/chat-completions).
 

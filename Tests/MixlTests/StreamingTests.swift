@@ -2,8 +2,8 @@ import XCTest
 @testable import Mixl
 
 final class StreamingTests: XCTestCase {
-    func testSSEStreamParserCompleteLines() throws {
-        let parser = SSEStreamParser()
+    func testMixLayerSSEStreamParserCompleteLines() async throws {
+        let parser = MixLayerSSEStreamParser()
         
         let sampleSSE = """
         data: {"id":"1","object":"chat.completion.chunk","created":123,"model":"qwen","choices":[{"index":0,"delta":{"role":"assistant"}}]}
@@ -20,7 +20,7 @@ final class StreamingTests: XCTestCase {
         
         let lines = sampleSSE.components(separatedBy: "\n")
         for line in lines {
-            let parsed = try parser.parse(line: line + "\n")
+            let parsed = try await parser.parse(line: line + "\n")
             switch parsed {
             case .chunk(let chunk):
                 chunks.append(chunk)
@@ -38,17 +38,17 @@ final class StreamingTests: XCTestCase {
         XCTAssertEqual(chunks[2].choices.first?.delta.content, "Hello")
     }
     
-    func testSSEStreamParserSplitLines() throws {
-        let parser = SSEStreamParser()
+    func testMixLayerSSEStreamParserSplitLines() async throws {
+        let parser = MixLayerSSEStreamParser()
         
         // Feed partial line
         let part1 = "data: {\"id\":\"1\",\"object\":\"chat.completion.chunk\",\"created\":123,\"model\":\"qwen\",\"choi"
         let part2 = "ces\":[{\"index\":0,\"delta\":{\"content\":\"Hi\"}}]}\n"
         
-        let res1 = try parser.parse(line: part1)
+        let res1 = try await parser.parse(line: part1)
         XCTAssertEqual(res1, .empty) // buffered, not complete
         
-        let res2 = try parser.parse(line: part2)
+        let res2 = try await parser.parse(line: part2)
         switch res2 {
         case .chunk(let chunk):
             XCTAssertEqual(chunk.choices.first?.delta.content, "Hi")
@@ -95,7 +95,7 @@ final class StreamingTests: XCTestCase {
 }
 
 // Simple streaming mock service
-actor StreamingMockService: MixLayerService {
+actor StreamingMockService: MixlService {
     private let stream: AsyncThrowingStream<ChatCompletionChunk, Error>
     
     init(stream: AsyncThrowingStream<ChatCompletionChunk, Error>) {

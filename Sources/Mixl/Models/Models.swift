@@ -1,8 +1,9 @@
 import Foundation
 
-/// A type representing a MixLayer model name.
+/// A chat model identifier for Mixl inference backends.
 ///
-/// Use predefined static properties (like `.qwen3_5_9b`) or construct a custom model using `.custom("identifier")`.
+/// Use predefined static properties for MixLayer cloud models (like ``qwen3_5_4b_free``) or
+/// ``appleFoundation`` for on-device inference. See ``provider`` to route by backend.
 public struct Model: RawRepresentable, Codable, Sendable, Equatable, Hashable {
     /// The raw string identifier of the model.
     public let rawValue: String

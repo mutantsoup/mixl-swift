@@ -11,19 +11,13 @@ enum ParsedEvent: Equatable {
 }
 
 /// A thread-safe parser to buffer and process Server-Sent Events (SSE) streams from the MixLayer API.
-///
-/// Uses an internal lock synchronization pattern to support safe multi-threaded stream consumption.
-final class SSEStreamParser: @unchecked Sendable {
-    private let lock = NSLock()
+actor MixLayerSSEStreamParser {
     private var buffer = ""
 
     /// Initializes a new instance of the parser.
     init() {}
 
     func parse(line: String) throws -> ParsedEvent {
-        lock.lock()
-        defer { lock.unlock() }
-
         buffer += line
 
         // Find the first line terminator

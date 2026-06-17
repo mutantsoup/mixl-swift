@@ -23,8 +23,9 @@
 - [x] **Extended Thinking/Reasoning Mode**: Direct access to model reasoning steps in `reasoningContent` fields.
 - [x] **SSE Streaming**: Process reasoning and text tokens on-the-fly using Swift's `AsyncThrowingStream`.
 - [x] **Tool / Function Calling**: Fully type-safe JSON Schema model declarations and responses.
-- [x] **Typed Errors**: `MixLayerError` with OpenAI-style API error envelope parsing.
+- [x] **Typed Errors**: `MixlError` with MixLayer API error envelope parsing via `MixLayerAPIErrorResponse`.
 - [x] **Zero External Dependencies**: Pure Swift code built on top of Apple's foundation frameworks (`URLSession`, `Codable`).
+- [x] **On-Device Foundation Models** (macOS 26+ / iOS 26+): `LocalClient` with the same `chat.create` / `chat.createStream` API shape as `MixLayerClient`, backed by Apple's Foundation Models framework.
 
 ---
 
@@ -168,18 +169,85 @@ for try await chunk in stream {
 
 The same streaming pattern works with `reasoningEffort` instead of `thinking: true`. Whether `reasoningContent` appears — and how it differs by effort level — can vary by model; test against your target SKU.
 
+### 6. On-Device Inference with `LocalClient`
+
+Use `LocalClient` for Apple Intelligence on-device models. It mirrors the cloud client's API shape but does not require a MixLayer API key. Use `Model.appleFoundation` and guard for OS and device availability:
+
+```swift
+import Mixl
+
+if #available(iOS 26.0, macOS 26.0, visionOS 26.0, watchOS 26.0, tvOS 26.0, *) {
+    if let reason = LocalModelSupport.unavailabilityReason() {
+        print("On-device model unavailable: \(LocalModelSupport.message(for: reason))")
+    } else {
+        let client = LocalClient()
+        let response = try await client.chat.create(
+            model: .appleFoundation,
+            messages: [
+                .system("You are a helpful assistant."),
+                .user("Summarize Swift concurrency in one sentence.")
+            ],
+            temperature: 0.7
+        )
+        print(response.choices.first?.message.content ?? "")
+    }
+}
+```
+
+Streaming works the same way as the cloud client:
+
+```swift
+let stream = try await client.chat.createStream(
+    model: .appleFoundation,
+    messages: [.user("Count from 1 to 5.")]
+)
+
+for try await chunk in stream {
+    if let delta = chunk.choices.first?.delta.content {
+        print(delta, terminator: "")
+    }
+}
+```
+
+**Supported on local path:** `temperature`, `maxCompletionTokens` / `maxTokens`.
+
+**Stripped on local path (logged):** `thinking`, `reasoningEffort`, `top_p`, `top_k`, penalties, `stop`, and `seed` — removed so cloud-shaped requests work with a future orchestrator; Mixl logs each dropped parameter via `os.Logger`.
+
+**Strict on local path (throws `MixlError.unsupportedParameter`):** `tools`, JSON `response_format`, and tool messages — these change response semantics and must not be silently ignored.
+
+Wrong model identifiers still throw `MixlError.modelNotSupported`; unavailable devices throw `MixlError.localModelUnavailable`.
+
+See [MIXLAYER.md](MIXLAYER.md#ml-ref-local) for the local backend compatibility table.
+
 ---
 
 ## Running the Examples
 
-An interactive command-line app demonstrates non-thinking completions, streaming reasoning (`thinking: true` and each `reasoningEffort` level), and tool calling. All examples use **`Model.qwen3_5_4b_free`** (`qwen/qwen3.5-4b-free`) so they run on a free MixLayer account without a paid model SKU.
+An interactive command-line app demonstrates MixLayer cloud completions (non-thinking, streaming reasoning, tool calling) and local on-device Foundation Models examples.
+
+**Cloud examples** use **`Model.qwen3_5_4b_free`** and require a MixLayer API key:
 
 ```bash
 export MIXLAYER_API_KEY="your-api-key"
 swift run MixlExamples
 ```
 
-Sign up for a free API key at the [MixLayer Console](https://console.mixlayer.com) if you do not have one. If the key is not set, the app prints setup instructions.
+**Local examples** use **`Model.appleFoundation`**, require **macOS 26+ / iOS 26+** with Apple Intelligence enabled, and do not need an API key. Select option **2** from the main menu.
+
+Sign up for a free API key at the [MixLayer Console](https://console.mixlayer.com) if you do not have one. If the key is not set, cloud examples print setup instructions; local examples remain available when the device supports them.
+
+### Running tests
+
+```bash
+swift test
+```
+
+| Backend | Unit / mock tests | Live integration test | Gate |
+| --- | --- | --- | --- |
+| MixLayer cloud | Always run | `testMixLayerAPIServiceIntegrationTest` | Set `MIXLAYER_API_KEY` |
+| Local (Foundation Models) | Always run | `testLocalClientIntegrationTest` | Foundation Models SDK linked + on-device model available |
+
+Without the gate conditions, integration tests are **skipped** (not failed). On CI runners without the Foundation Models SDK, the local integration test skips automatically.
 
 ---
 

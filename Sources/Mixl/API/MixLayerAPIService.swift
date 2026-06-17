@@ -1,9 +1,9 @@
 import Foundation
 
-/// A concrete network-backed implementation of the `MixLayerService` protocol.
+/// A concrete network-backed implementation of the ``MixlService`` protocol.
 ///
 /// Sends HTTP requests to the MixLayer server using standard `URLSession`.
-internal struct APIService: MixLayerService {
+internal struct MixLayerAPIService: MixlService {
     private let apiKey: String
     private let baseURL: URL
     private let session: URLSession
@@ -28,7 +28,7 @@ internal struct APIService: MixLayerService {
         do {
             (data, response) = try await session.data(for: urlRequest)
         } catch {
-            throw MixLayerError.network(error.localizedDescription)
+            throw MixlError.network(error.localizedDescription)
         }
 
         _ = try validateHTTPResponse(response, data: data)
@@ -36,7 +36,7 @@ internal struct APIService: MixLayerService {
         do {
             return try JSONDecoder().decode(ChatCompletionResponse.self, from: data)
         } catch {
-            throw MixLayerError.decodingFailed(error.localizedDescription)
+            throw MixlError.decodingFailed(error.localizedDescription)
         }
     }
 
@@ -51,24 +51,24 @@ internal struct APIService: MixLayerService {
                     let (bytes, response) = try await session.bytes(for: urlRequest)
 
                     guard let httpResponse = response as? HTTPURLResponse else {
-                        throw MixLayerError.invalidResponse
+                        throw MixlError.invalidResponse
                     }
 
                     guard (200...299).contains(httpResponse.statusCode) else {
                         let errorData = try await Self.collectData(from: bytes)
-                        throw MixLayerErrorParser.httpError(
+                        throw MixLayerAPIErrorParser.httpError(
                             statusCode: httpResponse.statusCode,
                             data: errorData
                         )
                     }
 
-                    let parser = SSEStreamParser()
+                    let parser = MixLayerSSEStreamParser()
                     for try await line in bytes.lines {
                         if Task.isCancelled {
                             break
                         }
 
-                        let parsed = try parser.parse(line: line + "\n")
+                        let parsed = try await parser.parse(line: line + "\n")
                         switch parsed {
                         case .chunk(let chunk):
                             continuation.yield(chunk)
@@ -80,10 +80,10 @@ internal struct APIService: MixLayerService {
                         }
                     }
                     continuation.finish()
-                } catch let error as MixLayerError {
+                } catch let error as MixlError {
                     continuation.finish(throwing: error)
                 } catch {
-                    continuation.finish(throwing: MixLayerError.network(error.localizedDescription))
+                    continuation.finish(throwing: MixlError.network(error.localizedDescription))
                 }
             }
 
@@ -103,7 +103,7 @@ internal struct APIService: MixLayerService {
         do {
             urlRequest.httpBody = try JSONEncoder().encode(request)
         } catch {
-            throw MixLayerError.encodingFailed(error.localizedDescription)
+            throw MixlError.encodingFailed(error.localizedDescription)
         }
 
         return urlRequest
@@ -111,11 +111,11 @@ internal struct APIService: MixLayerService {
 
     private func validateHTTPResponse(_ response: URLResponse, data: Data) throws -> HTTPURLResponse {
         guard let httpResponse = response as? HTTPURLResponse else {
-            throw MixLayerError.invalidResponse
+            throw MixlError.invalidResponse
         }
 
         guard (200...299).contains(httpResponse.statusCode) else {
-            throw MixLayerErrorParser.httpError(statusCode: httpResponse.statusCode, data: data)
+            throw MixLayerAPIErrorParser.httpError(statusCode: httpResponse.statusCode, data: data)
         }
 
         return httpResponse

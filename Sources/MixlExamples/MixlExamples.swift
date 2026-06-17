@@ -7,12 +7,70 @@ struct ExamplesApp {
     private static let exampleModel = Model.qwen3_5_4b_free
 
     static func main() async {
+        var shouldQuit = false
+
+        while !shouldQuit {
+            print("""
+
+            ==================================================
+            🚀 Mixl (MixLayer Swift SDK) Examples CLI
+            ==================================================
+
+            Please select a backend:
+            1. MixLayer Cloud Examples (requires MIXLAYER_API_KEY)
+            2. Local Foundation Models Examples (on-device, no API key)\(localExamplesAvailabilityNote())
+            3. Quit
+
+            Enter selection (1-3):
+            """, terminator: "")
+
+            guard let input = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+                continue
+            }
+
+            switch input {
+            case "1":
+                await runCloudExamplesMenu()
+            case "2":
+                await runLocalExamplesMenu()
+            case "3":
+                print("\nGoodbye! 👋")
+                shouldQuit = true
+            default:
+                print("\n⚠️ Invalid selection. Please enter a number between 1 and 3.")
+                await waitForEnter()
+            }
+        }
+    }
+
+    private static func localExamplesAvailabilityNote() -> String {
+        guard isLocalExamplesRuntimeAvailable else {
+            return "\n   (requires macOS 26+ / iOS 26+ with Foundation Models)"
+        }
+        if let reason = LocalModelSupport.unavailabilityReason() {
+            return "\n   (device status: \(reason.rawValue))"
+        }
+        return ""
+    }
+
+    private static var isLocalExamplesRuntimeAvailable: Bool {
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, macOS 26.0, visionOS 26.0, watchOS 26.0, tvOS 26.0, *) {
+            return true
+        }
+        #endif
+        return false
+    }
+
+    // MARK: - Cloud Examples Menu
+
+    private static func runCloudExamplesMenu() async {
         guard let apiKey = ProcessInfo.processInfo.environment["MIXLAYER_API_KEY"], !apiKey.isEmpty else {
             print("""
             ===================================================================
             ❌ Error: MIXLAYER_API_KEY environment variable is not set.
-            
-            To run the Mixl examples:
+
+            To run the MixLayer cloud examples:
             1. Sign up for a free account at: https://console.mixlayer.com/sign-up
             2. Go to the dashboard and create a new API Key under:
                https://console.mixlayer.com/app/api-keys
@@ -22,27 +80,25 @@ struct ExamplesApp {
                swift run MixlExamples
             ===================================================================
             """)
+            await waitForEnter()
             return
         }
 
         let client = MixLayerClient(apiKey: apiKey)
-        var shouldQuit = false
+        var shouldReturn = false
 
-        while !shouldQuit {
+        while !shouldReturn {
             print("""
 
-            ==================================================
-            🚀 Mixl (MixLayer Swift SDK) Examples CLI
-            ==================================================
+            --- MixLayer Cloud Examples ---
             Model: \(exampleModel.rawValue) (free tier)
             API Key detected: \(String(apiKey.prefix(4)))****************\(String(apiKey.suffix(4)))
 
-            Please select an example to run:
             1. Standard Chat Completion (non-thinking / instruct mode)
             2. Streaming Reasoning (pick thinking mode…)
             3. Tool / Function Calling (non-thinking)
-            4. Run All Examples
-            5. Quit
+            4. Run All Cloud Examples
+            5. Back to main menu
 
             Enter selection (1-5):
             """, terminator: "")
@@ -64,7 +120,7 @@ struct ExamplesApp {
                 await runToolCalling(client: client)
                 await waitForEnter()
             case "4":
-                print("\n--- Running All Examples ---")
+                print("\n--- Running All Cloud Examples ---")
                 await runStandardCompletion(client: client)
                 print("\n----------------------------")
                 for mode in ReasoningExampleMode.allCases {
@@ -73,11 +129,10 @@ struct ExamplesApp {
                 }
                 await runToolCalling(client: client)
                 print("\n----------------------------")
-                print("All examples completed!")
+                print("All cloud examples completed!")
                 await waitForEnter()
             case "5":
-                print("\nGoodbye! 👋")
-                shouldQuit = true
+                shouldReturn = true
             default:
                 print("\n⚠️ Invalid selection. Please enter a number between 1 and 5.")
                 await waitForEnter()
@@ -85,20 +140,173 @@ struct ExamplesApp {
         }
     }
 
-    // MARK: - Examples
+    // MARK: - Local Examples Menu
+
+    private static func runLocalExamplesMenu() async {
+        guard isLocalExamplesRuntimeAvailable else {
+            print("""
+            ===================================================================
+            ❌ Local examples require macOS 26+ / iOS 26+ with the Foundation
+               Models framework. Build and run on an Apple Intelligence-capable
+               device with Xcode 26 or later.
+            ===================================================================
+            """)
+            await waitForEnter()
+            return
+        }
+
+        if let reason = LocalModelSupport.unavailabilityReason() {
+            print("""
+            ===================================================================
+            ❌ On-device model unavailable: \(reason.rawValue)
+               \(LocalModelSupport.message(for: reason))
+            ===================================================================
+            """)
+            await waitForEnter()
+            return
+        }
+
+        if #available(iOS 26.0, macOS 26.0, visionOS 26.0, watchOS 26.0, tvOS 26.0, *) {
+            await runLocalExamplesMenuOnSupportedRuntime()
+        }
+    }
+
+    @available(iOS 26.0, macOS 26.0, visionOS 26.0, watchOS 26.0, tvOS 26.0, *)
+    private static func runLocalExamplesMenuOnSupportedRuntime() async {
+        let client = LocalClient()
+        let localModel = Model.appleFoundation
+        var shouldReturn = false
+
+        while !shouldReturn {
+            print("""
+
+            --- Local Foundation Models Examples ---
+            Model: \(localModel.rawValue) (on-device, no API key)
+
+            1. Standard Chat Completion
+            2. Streaming Completion
+            3. Run All Local Examples
+            4. Back to main menu
+
+            Enter selection (1-4):
+            """, terminator: "")
+
+            guard let input = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+                continue
+            }
+
+            switch input {
+            case "1":
+                await runLocalStandardCompletion(client: client, model: localModel)
+                await waitForEnter()
+            case "2":
+                await runLocalStreamingCompletion(client: client, model: localModel)
+                await waitForEnter()
+            case "3":
+                print("\n--- Running All Local Examples ---")
+                await runLocalStandardCompletion(client: client, model: localModel)
+                print("\n----------------------------")
+                await runLocalStreamingCompletion(client: client, model: localModel)
+                print("\n----------------------------")
+                print("All local examples completed!")
+                await waitForEnter()
+            case "4":
+                shouldReturn = true
+            default:
+                print("\n⚠️ Invalid selection. Please enter a number between 1 and 4.")
+                await waitForEnter()
+            }
+        }
+    }
+
+    @available(iOS 26.0, macOS 26.0, visionOS 26.0, watchOS 26.0, tvOS 26.0, *)
+    private static func runLocalStandardCompletion(client: LocalClient, model: Model) async {
+        print("\n[Local Example 1] Standard Chat Completion (on-device)...")
+        print("Sending request to model: \(model.rawValue)")
+
+        let messages: [Message] = [
+            .system("You are a helpful assistant that answers concisely."),
+            .user("Explain what Swift concurrency is in one sentence.")
+        ]
+
+        print("\n💬 Input Prompt:")
+        for msg in messages {
+            print("  [\(msg.role.rawValue.uppercased())]: \(msg.content ?? "")")
+        }
+
+        do {
+            let response = try await client.chat.create(
+                model: model,
+                messages: messages,
+                temperature: 0.7
+            )
+
+            if let content = response.choices.first?.message.content {
+                print("\n✨ Model Response:")
+                print(content)
+            } else {
+                print("\n⚠️ No content returned.")
+            }
+        } catch {
+            print("\n❌ Error running local chat completion: \(error)")
+        }
+    }
+
+    @available(iOS 26.0, macOS 26.0, visionOS 26.0, watchOS 26.0, tvOS 26.0, *)
+    private static func runLocalStreamingCompletion(client: LocalClient, model: Model) async {
+        print("\n[Local Example 2] Streaming Completion (on-device)...")
+        print("Sending streaming request to model: \(model.rawValue)")
+
+        let messages: [Message] = [
+            .user("Count from 1 to 5, one number per line.")
+        ]
+
+        print("\n💬 Input Prompt:")
+        for msg in messages {
+            print("  [\(msg.role.rawValue.uppercased())]: \(msg.content ?? "")")
+        }
+
+        do {
+            let stream = try await client.chat.createStream(
+                model: model,
+                messages: messages,
+                temperature: 0.7
+            )
+
+            print("\n✨ Streaming Response:")
+            for try await chunk in stream {
+                if let content = chunk.choices.first?.delta.content {
+                    print(content, terminator: "")
+                    fflush(stdout)
+                }
+            }
+            print()
+        } catch {
+            print("\n❌ Error running local stream: \(error)")
+        }
+    }
+
+    // MARK: - Cloud Examples
 
     private static func runStandardCompletion(client: MixLayerClient) async {
         print("\n[Example 1] Standard Chat Completion (non-thinking)...")
         print("No thinking or reasoningEffort parameters — instruct mode.")
         print("Sending request to model: \(exampleModel.rawValue)")
 
+        let messages: [Message] = [
+            .system("You are a helpful assistant that answers concisely."),
+            .user("Explain what MixLayer is in one sentence.")
+        ]
+
+        print("\n💬 Input Prompt:")
+        for msg in messages {
+            print("  [\(msg.role.rawValue.uppercased())]: \(msg.content ?? "")")
+        }
+
         do {
             let response = try await client.chat.create(
                 model: exampleModel,
-                messages: [
-                    .system("You are a helpful assistant that answers concisely."),
-                    .user("Explain what MixLayer is in one sentence.")
-                ],
+                messages: messages,
                 temperature: 0.7
             )
 
@@ -125,18 +333,25 @@ struct ExamplesApp {
         print(mode.documentationNote)
         print("Sending request to model: \(exampleModel.rawValue)")
 
+        let messages: [Message] = [
+            .user("If I have 3 apples, eat 1, and buy 4 more, how many apples do I have? Solve it step-by-step.")
+        ]
+
+        print("\n💬 Input Prompt:")
+        for msg in messages {
+            print("  [\(msg.role.rawValue.uppercased())]: \(msg.content ?? "")")
+        }
+
         do {
             let stream = try await client.chat.createStream(
                 model: exampleModel,
-                messages: [
-                    .user("If I have 3 apples, eat 1, and buy 4 more, how many apples do I have? Solve it step-by-step.")
-                ],
+                messages: messages,
                 thinking: mode.thinking,
                 reasoningEffort: mode.reasoningEffort,
                 temperature: 1.0
             )
 
-            print("\n🤔 Thinking process:")
+            print("\n🧠 Reasoning Stream:")
             var startedContent = false
             var receivedReasoning = false
 
@@ -198,6 +413,11 @@ struct ExamplesApp {
         print("No thinking parameters — tool calling uses default instruct mode.")
         print("Sending request with tool registered to model: \(exampleModel.rawValue)")
 
+        print("\n💬 Input Prompt:")
+        for msg in messages {
+            print("  [\(msg.role.rawValue.uppercased())]: \(msg.content ?? "")")
+        }
+
         do {
             let response = try await client.chat.create(
                 model: exampleModel,
@@ -222,12 +442,20 @@ struct ExamplesApp {
                 let simulatedTime = "9:30 PM (Tokyo Standard Time)"
                 print("   Tool Output: \(simulatedTime)")
 
-                print("\nSending tool output back to the model...")
                 let followUpMessages = [
                     messages[0],
                     choice.message,
                     .tool(simulatedTime, toolCallId: toolCall.id)
                 ]
+
+                print("\n💬 Sending tool output and conversation history back to the model:")
+                for msg in followUpMessages {
+                    if msg.role == .assistant, let toolCalls = msg.toolCalls {
+                        print("  [ASSISTANT]: (Requested tool call: \(toolCalls.first?.function.name ?? ""))")
+                    } else {
+                        print("  [\(msg.role.rawValue.uppercased())]: \(msg.content ?? "")")
+                    }
+                }
 
                 let finalResponse = try await client.chat.create(
                     model: exampleModel,
