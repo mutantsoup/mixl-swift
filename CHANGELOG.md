@@ -62,6 +62,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`MixlExamples`** unified orchestrator menu demonstrating router-based cloud/local routing, the direct `client.cloud` / `client.local` accessors, and a run-all option.
 - `MixlClientTests` covering default/custom routing, streaming, availability-aware fail-fast behavior, and routing-context computation.
 
+## [0.4.0] - 2026-06-21
+
+### Added
+
+- **`MixlLogicRouter`** — routes via a custom `async`/`throws` closure, for inline policies without declaring a new type.
+- **`MixlFallbackRouter`** — falls back to a configurable cloud model when a primary router targets local but on-device inference is unavailable (or throws `localModelUnavailable`), preserving any payload transformation the primary applied.
+- **`MixlPatternRouter`** and **`MixlPatternRule`** — route on ordered, precompiled regular-expression rules against prompt text (e.g. PII/compliance gating), delegating to a default router when no rule matches.
+- **Bundled best-effort PII rule factories** on `MixlPatternRule`: `.email`, `.usSSN`, `.creditCard`, `.phoneUS`, and `.ipv4` — non-throwing convenience constructors that take only the routing decision.
+- **`ChatCompletionRequest.copy(withModel:)`** — returns a copy of a request with a different model identifier, for routers that rewrite the target model.
+- New router types organized under `Sources/Mixl/Routers/` (one type per file).
+- **`proxy/`** — a runnable, dependency-free Node.js reference key proxy (standalone server plus AWS Lambda and GCP Cloud Functions handlers over a shared forwarding core) that keeps the MixLayer API key server-side; the app uses `MixLayerClient` unchanged apart from `apiKey` (a user token) and `baseURL`. Includes per-request logging with all keys/tokens masked (toggle with `PROXY_LOG`).
+- README **Securing Your API Key** section — client/server/BYOK guidance, a backend-proxy walkthrough, and operational hygiene.
+- DocC <doc:Routing> article, a Routing topics group, and a README routing section and feature entry.
+- `MixlPatternRuleCommonTests` covering each bundled PII pattern (positive/negative samples), decision wiring, and router integration.
+
+### Changed
+
+- **`MixlExamples`** — added a **Quit** option to every menu so the app can be exited from any submenu, via a shared `quit()` helper; split the examples source into per-category files.
+- **`MixlExamples`** — added a proxy run mode: setting `MIXLAYER_BASE_URL` (with an optional `MIXLAYER_AUTH_TOKEN`) routes the cloud/orchestrator examples through a key proxy with a user token instead of requiring `MIXLAYER_API_KEY`. Menus show an explicit `🔌 PROXY MODE` / `🔑 DIRECT MODE` banner (with the masked credential and its source env var) so it's clear which path is active. The existing direct `MIXLAYER_API_KEY` mode is unchanged.
+
+### Fixed
+
+- **`MixlFallbackRouter`** now copies the primary router's transformed local request when falling back to the cloud, instead of the original untransformed request.
+
+[0.4.0]: https://github.com/mutantsoup/mixl-swift/releases/tag/0.4.0
 [0.3.0]: https://github.com/mutantsoup/mixl-swift/releases/tag/0.3.0
 [0.2.0]: https://github.com/mutantsoup/mixl-swift/releases/tag/0.2.0
 [0.1.0]: https://github.com/mutantsoup/mixl-swift/releases/tag/0.1.0

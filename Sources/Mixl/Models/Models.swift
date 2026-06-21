@@ -33,6 +33,9 @@ public struct Model: RawRepresentable, Codable, Sendable, Equatable, Hashable {
     /// Qwen 3.5 397B Mixture of Experts model.
     public static let qwen3_5_397b_a17b = Model(rawValue: "qwen/qwen3.5-397b-a17b")
 
+    /// A placeholder model identifier when the actual model is determined dynamically by a ``MixlRouter``.
+    public static let routed = Model(rawValue: "routed")
+
     /// Initializes a custom model identifier that is not yet predefined.
     ///
     /// - Parameter name: The custom identifier string of the model.

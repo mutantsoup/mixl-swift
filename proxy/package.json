@@ -1,0 +1,14 @@
+{
+  "name": "mixl-key-proxy",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Reference key proxy for the Mixl Swift SDK — keeps your MixLayer API key server-side.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js"
+  }
+}

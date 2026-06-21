@@ -151,6 +151,31 @@ public struct ChatCompletionRequest: Codable, Sendable, Equatable {
     }
 }
 
+extension ChatCompletionRequest {
+    /// Helper to create a copy of the request with a different model identifier.
+    public func copy(withModel newModel: String) -> ChatCompletionRequest {
+        ChatCompletionRequest(
+            model: newModel,
+            messages: messages,
+            thinking: thinking,
+            reasoningEffort: reasoningEffort,
+            temperature: temperature,
+            topP: topP,
+            topK: topK,
+            frequencyPenalty: frequencyPenalty,
+            presencePenalty: presencePenalty,
+            repetitionPenalty: repetitionPenalty,
+            maxCompletionTokens: maxCompletionTokens,
+            maxTokens: maxTokens,
+            stop: stop,
+            seed: seed,
+            stream: stream,
+            tools: tools,
+            responseFormat: responseFormat
+        )
+    }
+}
+
 /// A structure representing a tool the model can invoke.
 public struct Tool: Codable, Sendable, Equatable {
     /// The type of the tool. Defaults to `"function"`.

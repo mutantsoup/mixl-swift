@@ -14,6 +14,10 @@ Use ``MixLayerClient`` with a MixLayer API key and Qwen model identifiers (``Mod
 
 Use ``LocalClient`` with ``Model/appleFoundation`` on iOS 26+, macOS 26+, and other platforms where Foundation Models is available. See <doc:LocalInference> for availability checks, parameter compatibility, and error handling.
 
+### Routing
+
+Use ``MixlClient`` to route a single `chat.create` / `chat.createStream` call to the cloud or on-device backend automatically. Supply a ``MixlRouter`` policy — ``MixlDefaultRouter`` (model-based), ``MixlLogicRouter`` (inline closure), ``MixlFallbackRouter`` (cloud fallback when local is down), or ``MixlPatternRouter`` (PII/regex gating) — or implement your own. See <doc:Routing>.
+
 ### Thinking modes (cloud only)
 
 - **Non-thinking (default):** omit `thinking` and `reasoningEffort` for instruct-style responses.
@@ -50,6 +54,20 @@ For unit tests, add the `MixlTesting` product and inject `MockMixlService` throu
 - ``LocalModelUnavailabilityReason``
 - ``Model/appleFoundation``
 - ``MixlModelProvider``
+
+### Routing
+
+- <doc:Routing>
+- ``MixlClient``
+- ``MixlRouter``
+- ``MixlRoutingContext``
+- ``MixlRoutingDecision``
+- ``MixlDefaultRouter``
+- ``MixlLogicRouter``
+- ``MixlFallbackRouter``
+- ``MixlPatternRouter``
+- ``MixlPatternRule``
+- ``Model/routed``
 
 ### Messages and Models
 

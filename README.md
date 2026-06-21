@@ -26,6 +26,7 @@
 - [x] **Typed Errors**: `MixlError` with MixLayer API error envelope parsing via `MixLayerAPIErrorResponse`.
 - [x] **Zero External Dependencies**: Pure Swift code built on top of Apple's foundation frameworks (`URLSession`, `Codable`).
 - [x] **On-Device Foundation Models** (macOS 26+ / iOS 26+): `LocalClient` with the same `chat.create` / `chat.createStream` API shape as `MixLayerClient`, backed by Apple's Foundation Models framework.
+- [x] **Unified Routing**: `MixlClient` orchestrates a single API across cloud and on-device backends via a pluggable `MixlRouter` — model-based default, inline closure (`MixlLogicRouter`), cloud fallback (`MixlFallbackRouter`), and regex/PII gating (`MixlPatternRouter`) with bundled PII rule factories.
 
 ---
 
@@ -65,6 +66,8 @@ import Mixl
 
 let client = MixLayerClient(apiKey: "your-mixlayer-api-key")
 ```
+
+> **Security:** The hardcoded key literal above is illustrative only. Never hardcode or commit your MixLayer API key, and do not embed it in a shipped app. See [Securing Your API Key](#securing-your-api-key).
 
 ### 2. Standard Chat Completion (Non-Thinking)
 
@@ -219,11 +222,165 @@ Wrong model identifiers still throw `MixlError.modelNotSupported`; unavailable d
 
 See [MIXLAYER.md](MIXLAYER.md#ml-ref-local) for the local backend compatibility table.
 
+### 7. Unified Routing with `MixlClient`
+
+`MixlClient` exposes the same `chat.create` / `chat.createStream` API as the cloud and local clients, but routes each request to the appropriate backend through a `MixlRouter`. By default, `.appleFoundation` requests go on-device and everything else goes to the cloud:
+
+```swift
+import Mixl
+
+let client = MixlClient(apiKey: "your-mixlayer-api-key")
+
+// Routed automatically by the requested model.
+let response = try await client.chat.create(
+    model: .qwen3_5_27b,
+    messages: [.user("Hello!")]
+)
+
+// Bypass the router to target a backend directly.
+let cloudOnly = try await client.cloud.chat.create(model: .qwen3_5_27b, messages: [.user("Hi")])
+```
+
+Supply a custom policy with the `router:` parameter. Built-in routers:
+
+**`MixlLogicRouter`** — express any policy inline as an `async`/`throws` closure:
+
+```swift
+let client = MixlClient(apiKey: key, router: MixlLogicRouter { request, context in
+    let length = request.messages.compactMap { $0.content?.count }.reduce(0, +)
+    if length < 100, context.isLocalAvailable {
+        return .local(request.copy(withModel: Model.appleFoundation.rawValue))
+    }
+    return .cloud(request.copy(withModel: Model.qwen3_5_4b_free.rawValue))
+})
+```
+
+**`MixlFallbackRouter`** — automatically fall back to a cloud model when on-device inference is unavailable:
+
+```swift
+let client = MixlClient(apiKey: key, router: MixlFallbackRouter(fallbackCloudModel: .qwen3_5_4b_free))
+```
+
+**`MixlPatternRouter`** — keep prompts containing sensitive data on-device using regex rules. A starter set of best-effort PII rule factories is bundled (`.email`, `.usSSN`, `.creditCard`, `.phoneUS`, `.ipv4`):
+
+```swift
+let keepLocal: @Sendable (ChatCompletionRequest) -> MixlRoutingDecision = { request in
+    .local(request.copy(withModel: Model.appleFoundation.rawValue))
+}
+
+let client = MixlClient(apiKey: key, router: MixlPatternRouter(rules: [
+    .email(decision: keepLocal),
+    .usSSN(decision: keepLocal),
+    .creditCard(decision: keepLocal)
+]))
+```
+
+`MixlFallbackRouter` and `MixlPatternRouter` each accept an inner router, so policies compose (e.g. gate on PII first, then fall back to cloud when local is down). Bundled PII rules are best-effort and perform no semantic validation (no Luhn check on cards); for custom patterns use the throwing `MixlPatternRule(name:pattern:options:decision:)` initializer.
+
+See the DocC <doc:Routing> article (**Product → Build Documentation** in Xcode) for the full routing guide.
+
+---
+
+## Securing Your API Key
+
+Your MixLayer API key grants billable access to your account — treat it like a password. **Never hardcode it in source, commit it to version control, or embed it in an app you ship to users.** Keep real keys in `.gitignore`d configuration and load them at runtime.
+
+### Client apps (iOS, macOS, etc.): proxy through your own backend
+
+Any secret shipped inside a distributed app **can be extracted** — by inspecting the binary, dumping memory, or intercepting TLS traffic — even if it is obfuscated or stored in the Keychain at runtime. There is no way to safely embed a long-lived MixLayer key in a client app.
+
+Instead, keep the key on a server you control and have the app call *your* backend, which calls MixLayer on its behalf:
+
+```
+App ──(your per-user auth)──> Your backend ──(MixLayer key)──> MixLayer API
+```
+
+This is the only approach that actually protects the key, and it lets you add per-user authentication, rate limiting, usage quotas, abuse monitoring, and key rotation without shipping an app update. `MixLayerClient` accepts a custom `baseURL`, so the app can point Mixl at your proxy:
+
+```swift
+let client = MixLayerClient(
+    apiKey: userSessionToken,                          // your backend's token — NOT the MixLayer key
+    baseURL: URL(string: "https://api.yourapp.com/mixlayer/v1")!
+)
+```
+
+On-device inference needs no API key at all: routing sensitive or offline work to `LocalClient` / `Model.appleFoundation` (directly or via `MixlClient`) keeps it off the network entirely.
+
+#### Example: a minimal key proxy
+
+A runnable, dependency-free reference proxy ships in **[`proxy/`](proxy/)** — a standalone Node server plus AWS Lambda and GCP Cloud Functions handlers, sharing one forwarding core. It's starter code (the auth and rate-limit hooks are clearly-marked stubs to replace); see [`proxy/README.md`](proxy/README.md).
+
+Because MixLayer's API is OpenAI-compatible and `MixLayerClient` lets you override `baseURL`, the proxy can be a thin authenticated pass-through. **The app keeps using Mixl unchanged** — only two constructor arguments differ: `apiKey` carries the user's session token (not the MixLayer key), and `baseURL` points at your proxy. Every other call (`chat.create`, streaming, tools, reasoning, error handling, routing) is identical.
+
+```
+iOS app                              Your proxy                          MixLayer
+───────                              ──────────                          ────────
+MixLayerClient(apiKey: userToken,  ─► POST /mixlayer/v1/chat/completions
+               baseURL: proxy)        1. verify userToken (your auth)
+                                      2. rate-limit / quota check
+                                      3. swap Authorization → real key  ─► models.mixlayer.ai
+        ◄───────────────────────────  4. stream SSE chunks back  ◄──────── (token stream)
+```
+
+The app sends its user token in the `Authorization: Bearer` header (where Mixl puts `apiKey`); the proxy validates it and **overwrites that header** with the real MixLayer key before forwarding. The proxy must mirror MixLayer's path layout (Mixl appends `/chat/completions` to `baseURL`) and stream the `text/event-stream` body through without buffering, or token streaming breaks. Sketch (Vapor-flavored, illustrative):
+
+```swift
+app.post("mixlayer", "v1", "chat", "completions") { req async throws -> Response in
+    try await req.auth.require(AppUser.self)             // 1. your per-user auth
+    try await rateLimiter.check(for: req.userID)          // 2. throttle / quota
+
+    var headers = HTTPHeaders()
+    headers.bearerAuthorization = .init(token: Environment.get("MIXLAYER_API_KEY")!) // 3. real key
+    headers.contentType = .json
+
+    let upstream = try await req.client.post(             // 4. forward + stream back
+        "https://models.mixlayer.ai/v1/chat/completions",
+        headers: headers
+    ) { $0.body = req.body.data }
+
+    return Response(status: upstream.status, headers: upstream.headers,
+                    body: .init(buffer: upstream.body ?? .init()))
+}
+```
+
+App side — the only change from the Quick Start:
+
+```swift
+let client = MixLayerClient(
+    apiKey: userSessionToken,                                  // your token, not the MixLayer key
+    baseURL: URL(string: "https://api.yourapp.com/mixlayer/v1")!
+)
+```
+
+This pass-through isn't Swift-specific: style A is ~30 lines as a serverless function (Cloudflare Worker, Vercel, Lambda) in any language. Alternatively, expose your own higher-level endpoints (e.g. `POST /summarize`) and call MixLayer from the server — using Mixl with the real key — when you want to cap models/tokens or post-process server-side.
+
+### Server-side Swift, scripts, and development
+
+When the key lives in a trusted environment (your server, CI, or a dev machine), load it from an environment variable or a secrets manager rather than a literal — as the `MixlExamples` CLI does:
+
+```swift
+guard let apiKey = ProcessInfo.processInfo.environment["MIXLAYER_API_KEY"], !apiKey.isEmpty else { /* … */ }
+let client = MixLayerClient(apiKey: apiKey)
+```
+
+Use a git-ignored `.env` file for local dev and your platform's secrets manager (Vault, AWS/GCP/Azure, GitHub Actions secrets, etc.) in production.
+
+### "Bring your own key" apps
+
+If each user supplies *their own* MixLayer key, store it in the **Keychain** (never `UserDefaults` or a plist), request it over a secure channel, and never log or forward it. The key is the user's own, so the residual extraction risk is theirs — but the Keychain still protects it from other apps and casual inspection.
+
+### Operational hygiene
+
+- **Rotate** keys periodically, and immediately revoke any that may have leaked in the [MixLayer Console](https://console.mixlayer.com).
+- Use **separate keys per environment** (dev / staging / production) so one can be revoked without disrupting the others.
+- **Monitor usage** for anomalies and set spending limits where available.
+- **Never log the key.** (The `MixlExamples` CLI masks all but the first and last four characters when echoing it.)
+
 ---
 
 ## Running the Examples
 
-An interactive command-line app demonstrates MixLayer cloud completions (non-thinking, streaming reasoning, tool calling) and local on-device Foundation Models examples.
+An interactive command-line app demonstrates MixLayer cloud completions (non-thinking, streaming reasoning, tool calling), local on-device Foundation Models examples, and unified `MixlClient` routing (model-based routing, direct `client.cloud` / `client.local` access, and a custom logic router).
 
 **Cloud examples** use **`Model.qwen3_5_4b_free`** and require a MixLayer API key:
 
@@ -234,7 +391,23 @@ swift run MixlExamples
 
 **Local examples** use **`Model.appleFoundation`**, require **macOS 26+ / iOS 26+** with Apple Intelligence enabled, and do not need an API key. Select option **2** from the main menu.
 
-Sign up for a free API key at the [MixLayer Console](https://console.mixlayer.com) if you do not have one. If the key is not set, cloud examples print setup instructions; local examples remain available when the device supports them.
+**Orchestrator examples** (option **3**) demonstrate `MixlClient` routing and require a cloud connection for the cloud routing path.
+
+**Through the local key proxy (no API key on this side).** Instead of exporting `MIXLAYER_API_KEY`, you can run the [reference proxy](proxy/) with your real key and point the examples at it with `MIXLAYER_BASE_URL` — the examples then connect with a user token, exactly as a shipped app would:
+
+```bash
+# Terminal 1 — start the proxy with your real key (kept server-side):
+cd proxy && MIXLAYER_API_KEY="your-api-key" npm start
+
+# Terminal 2 — run the examples against the proxy, no API key here:
+export MIXLAYER_BASE_URL="http://localhost:8787/mixlayer/v1"
+export MIXLAYER_AUTH_TOKEN="any-user-token"   # optional; the reference proxy accepts any non-empty token
+swift run MixlExamples
+```
+
+When `MIXLAYER_BASE_URL` is set it takes precedence and the cloud/orchestrator menus show a `Via proxy:` banner. The existing direct mode (export `MIXLAYER_API_KEY`, no base URL) is unchanged.
+
+Sign up for a free API key at the [MixLayer Console](https://console.mixlayer.com) if you do not have one. If neither a key nor a base URL is set, cloud examples print setup instructions; local examples remain available when the device supports them.
 
 ### Running tests
 
