@@ -16,8 +16,10 @@
 ---
 
 ## <a name="ag-mission"></a>[AG-MISSION] 1. Core Mission
-Your task is to build and maintain **Mixl**, a lightweight, robust Swift library for working with the **MixLayer API**.
+Your task is to build and maintain **Mixl**, a lightweight, robust Swift library for working with the **MixLayer API** and on-device inference.
 The library must wrap standard chat completions, tool calling, and streaming reasoning (thinking mode) in an elegant, native Swift interface matching Apple SDK standards (e.g., async/await, Decodable responses, and clean type-safety).
+
+Mixl spans three backends behind one shared `MixlService` protocol — **cloud** (`MixLayerClient`), **on-device** Apple Foundation Models (`LocalClient`), and a unified **orchestrator** (`MixlClient`) that routes between them. On top of the orchestrator sit composable **routers** (backend selection), **request transforms** (payload rewriting), and a SwiftUI-style **declarative prompt API**. New work must preserve this layering and keep the imperative `chat.create` / `chat.createStream` API intact; the declarative layer is pure sugar over it.
 
 ---
 
@@ -27,12 +29,28 @@ Design the library using a modular structure with unidirectional data flow and s
 
 ```mermaid
 graph TD
-    Client[MixLayerClient] --> ChatService[MixlChatCompletionsService]
+    Declarative["Declarative API (Prompt + modifiers, client.run/stream)"] --> Orchestrator
+    Orchestrator[MixlClient] --> Transforms["Transforms (MixlRequestTransform)"]
+    Orchestrator --> Router["Router (MixlRouter)"]
+    Router --> Cloud[MixLayerClient]
+    Router --> Local[LocalClient]
+    Cloud --> ChatService[MixlChatCompletionsService]
+    Local --> ChatService
     ChatService --> RequestModel[ChatCompletionRequest]
-    ChatService --> NetworkEngine[NetworkEngine / URLSession]
+    Cloud --> NetworkEngine[MixLayerAPIService / URLSession]
+    Local --> FoundationModels[LocalInferenceService / FoundationModels]
     NetworkEngine --> StreamParser[SSE Stream Parser]
     NetworkEngine --> DecodableResponse[ChatCompletionResponse / Decodable]
 ```
+
+All three clients (`MixLayerClient`, `LocalClient`, `MixlClient`) conform to **`MixlService`** and expose the same `chat.create` / `chat.createStream` surface. Source is organized by layer:
+
+* `Sources/Mixl/API/` — cloud backend (`MixLayerAPIService`, SSE parser, error envelope).
+* `Sources/Mixl/Local/` — on-device backend (`LocalInferenceService`, `LocalClient`, availability, prompt building, request sanitizing).
+* `Sources/Mixl/Routers/` — `MixlRouter` implementations (`MixlDefaultRouter`, `MixlLogicRouter`, `MixlFallbackRouter`, `MixlPatternRouter` + PII rule factories).
+* `Sources/Mixl/Transforms/` — `MixlRequestTransform` and `MixlTransform`.
+* `Sources/Mixl/Declarative/` — the declarative layer (`PromptContent`, `PromptBuilder`, components, modifiers, tool DSL, `MixlClient+Declarative`).
+* `MixlClient` routes through a shared internal route/dispatch core reused by both the imperative and declarative entry points.
 
 ### 1. Networking Layer
 * Use `URLSession` for network requests. Avoid third-party networking libraries like Alamofire unless explicitly requested.
@@ -114,12 +132,32 @@ Use this checklist to track development milestones:
   - [x] `MixlDefaultRouter` for automatic model routing.
   - [x] Dynamic backend extensions for `.cloud` and platform-gated `.local`.
   - [x] Unified router examples in CLI.
+- [x] **Custom Routers & Key Proxy** (`0.4.0`)
+  - [x] `MixlLogicRouter`, `MixlFallbackRouter`, `MixlPatternRouter` under `Sources/Mixl/Routers/`.
+  - [x] `MixlPatternRule` with bundled PII factories (`.email`, `.usSSN`, `.creditCard`, `.phoneUS`, `.ipv4`).
+  - [x] `ChatCompletionRequest.copy(withModel:)` and `Model.routed`.
+  - [x] `proxy/` reference key proxy (standalone + AWS Lambda + GCP) with masked logging.
+  - [x] README "Securing Your API Key" section and DocC `Routing` article.
+- [x] **Request Transforms** (`0.5.0`)
+  - [x] `MixlRequestTransform` protocol and `MixlTransform` (with `.mapContent`) under `Sources/Mixl/Transforms/`.
+  - [x] `MixlClient(transforms:)` chain applied before routing; `copy(withMessages:)` / `mappingContent(_:)`.
+  - [x] DocC `Transforms` article and a transform-chain example.
+- [x] **Declarative Prompt API** (`0.6.0`)
+  - [x] `PromptContent` + `PromptBuilder`, leaf components, `Prompt`, and chainable modifiers under `Sources/Mixl/Declarative/`.
+  - [x] `PromptComponent`, `PromptModifier`, tool-schema DSL (`FunctionTool` / `Field`).
+  - [x] `MixlClient.run` / `.stream` execution and `resolvedMessages()` / `resolvedTools()` previewing.
+  - [x] DocC `Declarative` article, README Quick Start section, and a dedicated examples menu.
 
 ---
 
 ## <a name="ag-references"></a>[AG-REFS] 6. Key Reference Files
 
 * **API Specification Reference**: [MIXLAYER.md](MIXLAYER.md) — Contains REST endpoints, parameter guides, reasoning models, and tool details.
+* **Roadmap**: [ROADMAP.md](ROADMAP.md) — Shipped phases (`0.1.0`–`0.6.0`) and use-case sketches under consideration.
+* **Changelog**: [CHANGELOG.md](CHANGELOG.md) — User-visible changes per release; update for any user-facing change.
+* **Contributing Guide**: [CONTRIBUTING.md](CONTRIBUTING.md) — Test/PR workflow and the mock/production sync rules.
 * **Main Project Readme**: [README.md](README.md) — Main human onboarding, build, and example execution guide.
-* **Examples Target Main**: [MixlExamples.swift](Sources/MixlExamples/MixlExamples.swift) — Code implementation for the interactive examples console loop.
+* **Examples Target Main**: [MixlExamples.swift](Sources/MixlExamples/MixlExamples.swift) — Interactive console loop; per-category files (`ExamplesApp+CloudExamples`, `+LocalExamples`, `+OrchestratorExamples`, `+DeclarativeExamples`, `+Support`).
+* **DocC Catalog**: [Sources/Mixl/Mixl.docc/](Sources/Mixl/Mixl.docc/) — Articles for local inference, routing, transforms, and the declarative API.
+* **Key Proxy**: [proxy/README.md](proxy/README.md) — Reference server-side key proxy (`0.4.0`).
 * **License Agreement**: [LICENSE](LICENSE) — Standard MIT licensing details.

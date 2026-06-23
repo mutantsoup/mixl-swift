@@ -22,6 +22,10 @@ Use ``MixlClient`` to route a single `chat.create` / `chat.createStream` call to
 
 Rewrite the request payload before it is routed — clean up a voice-transcribed prompt, redact sensitive terms, or inject a shared preamble — with a chain of ``MixlRequestTransform`` values on ``MixlClient``. Use ``MixlTransform`` for inline closures and ``MixlTransform/mapContent(_:)`` for the common case of editing message text. See <doc:Transforms>.
 
+### Composing prompts declaratively
+
+Build requests with a SwiftUI-style declarative API on ``MixlClient`` — composed content (``System``/``User``/``Assistant``), chainable modifiers (`.temperature`, `.reasoning`, `.tools`, …), reusable ``PromptComponent`` types, and custom ``PromptModifier`` types — all layered over the existing pipeline as pure sugar. Run with ``MixlClient/run(_:_:)`` / ``MixlClient/stream(_:_:)``. See <doc:Declarative>.
+
 ### Thinking modes (cloud only)
 
 - **Non-thinking (default):** omit `thinking` and `reasoningEffort` for instruct-style responses.
@@ -78,6 +82,15 @@ For unit tests, add the `MixlTesting` product and inject `MockMixlService` throu
 - <doc:Transforms>
 - ``MixlRequestTransform``
 - ``MixlTransform``
+
+### Composing prompts declaratively
+
+- <doc:Declarative>
+- ``PromptContent``
+- ``Prompt``
+- ``PromptComponent``
+- ``PromptModifier``
+- ``PromptBuilder``
 
 ### Messages and Models
 

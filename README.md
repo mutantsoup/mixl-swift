@@ -28,6 +28,7 @@
 - [x] **On-Device Foundation Models** (macOS 26+ / iOS 26+): `LocalClient` with the same `chat.create` / `chat.createStream` API shape as `MixLayerClient`, backed by Apple's Foundation Models framework.
 - [x] **Unified Routing**: `MixlClient` orchestrates a single API across cloud and on-device backends via a pluggable `MixlRouter` — model-based default, inline closure (`MixlLogicRouter`), cloud fallback (`MixlFallbackRouter`), and regex/PII gating (`MixlPatternRouter`) with bundled PII rule factories.
 - [x] **Request Transforms**: Rewrite the request payload before it is routed via a chain of `MixlRequestTransform` — clean up voice-transcribed prompts, redact sensitive terms, or inject a shared preamble. Use `MixlTransform` for inline closures and `MixlTransform.mapContent` to edit message text.
+- [x] **Declarative API**: Compose requests with a SwiftUI-style layer over `MixlClient` — composed content (`System`/`User`/`Assistant`), chainable modifiers (`.temperature`, `.reasoning`, `.tools`, …), reusable `PromptComponent` types, and custom `PromptModifier` types — run with `client.run` / `client.stream`. Pure sugar over the existing pipeline.
 
 ---
 
@@ -279,6 +280,43 @@ let client = MixlClient(apiKey: key, router: MixlPatternRouter(rules: [
 `MixlFallbackRouter` and `MixlPatternRouter` each accept an inner router, so policies compose (e.g. gate on PII first, then fall back to cloud when local is down). Bundled PII rules are best-effort and perform no semantic validation (no Luhn check on cards); for custom patterns use the throwing `MixlPatternRule(name:pattern:options:decision:)` initializer.
 
 See the DocC <doc:Routing> article (**Product → Build Documentation** in Xcode) for the full routing guide.
+
+### 8. Declarative Composition with `client.run`
+
+`MixlClient` also offers a SwiftUI-style declarative API as **pure syntactic sugar** over the same pipeline — the imperative `chat.create` API is unchanged. Compose content with a `@PromptBuilder` (with inline `if` / `for`), configure it with chainable modifiers, and execute with `client.run` / `client.stream`:
+
+```swift
+import Mixl
+
+let client = MixlClient(apiKey: "your-mixlayer-api-key")
+
+let response = try await client.run(.qwen3_5_27b) {
+    System("You are concise.")
+    if includeContext { User(contextBlob) }
+    User("Explain routing in one sentence.")
+}
+```
+
+Modifiers cover the full request surface (`.temperature`, `.topP`, `.reasoning`, `.thinking`, `.maxCompletionTokens`, `.stop`, `.responseFormat`, `.tools { … }`, …), and the routing/transform features are exposed as modifiers too (`.router`, `.fallback(to:)`, `.transform`, `.mapContent`). Precedence follows Apple's Foundation Models profiles: the innermost modifier wins.
+
+Define reusable, parameterized prompts by conforming to `PromptComponent` (the analog of SwiftUI's `View` / Foundation Models' `DynamicInstructions`):
+
+```swift
+struct SupportPrompt: PromptComponent {
+    var question: String
+    var history: [Message] = []
+
+    var body: some PromptContent {
+        System("You are a concise support agent.")
+        for message in history { message }
+        User(question)
+    }
+}
+
+let answer = try await client.run(.qwen3_5_27b, SupportPrompt(question: question))
+```
+
+Because each `run` is one request, chaining is ordinary sequencing — run one prompt, feed its output into the next, optionally on a different model (e.g. an on-device draft refined in the cloud). See the DocC <doc:Declarative> article for the full guide, custom `PromptModifier` types, and the tool-schema DSL.
 
 ---
 

@@ -18,9 +18,10 @@ struct ExamplesApp {
             1. MixLayer Cloud Examples (requires MIXLAYER_API_KEY)
             2. Local Foundation Models Examples (on-device, no API key)\(localExamplesAvailabilityNote())
             3. Unified Orchestrator Examples (MixlClient - routes automatically)
-            4. Quit
+            4. Declarative API Examples (SwiftUI-style composition with client.run)
+            5. Quit
 
-            Enter selection (1-4):
+            Enter selection (1-5):
             """, terminator: "")
 
             guard let input = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines) else {
@@ -35,9 +36,11 @@ struct ExamplesApp {
             case "3":
                 await runOrchestratorExamplesMenu()
             case "4":
+                await runDeclarativeExamplesMenu()
+            case "5":
                 quit()
             default:
-                print("\n⚠️ Invalid selection. Please enter a number between 1 and 4.")
+                print("\n⚠️ Invalid selection. Please enter a number between 1 and 5.")
                 await waitForEnter()
             }
         }

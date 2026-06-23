@@ -103,6 +103,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`MixlExamples`** — the streaming-reasoning example now uses a cleaner prompt (dropped the redundant "solve it step-by-step", since the reasoning stream already shows the working), a lower `temperature` (`0.5`), and a `maxCompletionTokens` ceiling as a guardrail against runaway reasoning loops on the free-tier model.
 
+## [0.6.0] - 2026-06-23
+
+### Added
+
+- **Declarative prompt API** — a SwiftUI-style layer over `MixlClient`, organized under `Sources/Mixl/Declarative/`. Pure syntactic sugar: composed content resolves to a `ChatCompletionRequest` (plus an optional per-prompt router and transform chain) and runs through the existing pipeline. The imperative `chat.create` / `chat.createStream` API is unchanged.
+- **`PromptContent`** protocol and **`PromptBuilder`** result builder, with leaf components **`System`**, **`User`**, **`Assistant`**, and **`ToolReply`**; raw `Message` values pass through so existing history composes alongside the leaves (`for message in history { message }`).
+- **`Prompt`** — a concrete container built with `@PromptBuilder` and configured with chainable modifiers.
+- **Modifiers** covering the full request surface: `.model`, `.temperature`, `.topP`, `.topK`, the penalties, `.thinking`, `.reasoning`, `.maxCompletionTokens`, `.maxTokens`, `.stop`, `.seed`, and `.responseFormat`. Configuration resolves innermost-wins, mirroring Apple's Foundation Models profiles; the `baseModel` passed to `run` / `stream` is the lowest-priority default.
+- **Routing and transform modifiers** bridging Phases 4–5: `.router(_:)`, `.fallback(to:)`, `.transform(_:)`, and `.mapContent(_:)`. A per-prompt router overrides the client's router for that call; per-prompt transforms run after the client's configured transforms.
+- **`PromptComponent`** — reusable, parameterized prompts defined by a `body` (the analog of SwiftUI's `View` / Foundation Models' `DynamicInstructions`), re-evaluated each run.
+- **`PromptModifier`** and `.modifier(_:)` for reusable custom modifiers (the analog of `ViewModifier` / `DynamicProfileModifier`), plus **`AnyPromptContent`** type erasure.
+- **Tool-schema DSL** — `FunctionTool(_:_:fields:)` with the `ToolBuilder` / `FieldBuilder` builders and `Field`, for declaring function tools without hand-writing JSON Schema.
+- **`MixlClient.run(_:_:)` / `MixlClient.stream(_:_:)`** — declarative execution entry points (closure-builder and value overloads).
+- **`PromptContent.resolvedMessages()` / `resolvedTools()`** — resolve a composed prompt for previewing or debugging without performing a request.
+- **`MixlExamples`** — a dedicated **Declarative API Examples** top-level menu with cloud, on-device, and two-model chain (outline → paragraph) examples; the chain shows feeding one model's output into another across backends.
+- DocC <doc:Declarative> article, a Declarative topics group, a README Quick Start section, and a README feature entry.
+- `DeclarativeTests` covering composition, modifier precedence, the tool DSL, `PromptComponent` conditionals/loops, routing and transform modifiers, custom modifiers, prompt previewing, and streaming.
+
+### Changed
+
+- **`MixlClient`** — refactored to share an internal route/dispatch core between the imperative `createChatCompletion*` methods and the declarative `run` / `stream` API, so the declarative layer can supply a per-call router and transform chain. Behavior of the existing API is unchanged.
+- **`MixlExamples`** — moved the declarative examples into their own top-level section, returning the unified-orchestrator menu to its previous size.
+
+[0.6.0]: https://github.com/mutantsoup/mixl-swift/releases/tag/0.6.0
 [0.5.0]: https://github.com/mutantsoup/mixl-swift/releases/tag/0.5.0
 [0.4.0]: https://github.com/mutantsoup/mixl-swift/releases/tag/0.4.0
 [0.3.0]: https://github.com/mutantsoup/mixl-swift/releases/tag/0.3.0

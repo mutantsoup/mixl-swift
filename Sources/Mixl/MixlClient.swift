@@ -98,9 +98,37 @@ public final class MixlClient: MixlService, Sendable {
 
     /// Submits a standard chat completion request, transforming then routing it.
     public func createChatCompletion(request: ChatCompletionRequest) async throws -> ChatCompletionResponse {
+        let decision = try await routeRequest(request, router: router, transforms: transforms)
+        return try await dispatch(decision)
+    }
+
+    /// Submits a streaming chat completion request, transforming then routing it.
+    public func createChatCompletionStream(request: ChatCompletionRequest) async throws -> AsyncThrowingStream<ChatCompletionChunk, Error> {
+        let decision = try await routeRequest(request, router: router, transforms: transforms)
+        return try await dispatchStream(decision)
+    }
+
+    /// Applies a transform chain then a router to a request, yielding the routing decision.
+    ///
+    /// Each transform receives the output of the previous one; a transform that throws aborts the
+    /// request before it reaches the router or any backend. Shared by the imperative
+    /// `createChatCompletion*` entry points and the declarative `run` / `stream` API, which supply a
+    /// per-call `router` and `transforms` chain.
+    internal func routeRequest(
+        _ request: ChatCompletionRequest,
+        router: any MixlRouter,
+        transforms: [any MixlRequestTransform]
+    ) async throws -> MixlRoutingDecision {
         let context = makeRoutingContext()
-        let transformed = try await applyTransforms(to: request, context: context)
-        let decision = try await router.route(request: transformed, context: context)
+        var current = request
+        for transform in transforms {
+            current = try await transform.process(request: current, context: context)
+        }
+        return try await router.route(request: current, context: context)
+    }
+
+    /// Dispatches a routing decision to the matching backend for a non-streaming request.
+    internal func dispatch(_ decision: MixlRoutingDecision) async throws -> ChatCompletionResponse {
         switch decision {
         case .cloud(let routedRequest):
             return try await cloudService.createChatCompletion(request: routedRequest)
@@ -109,32 +137,14 @@ public final class MixlClient: MixlService, Sendable {
         }
     }
 
-    /// Submits a streaming chat completion request, transforming then routing it.
-    public func createChatCompletionStream(request: ChatCompletionRequest) async throws -> AsyncThrowingStream<ChatCompletionChunk, Error> {
-        let context = makeRoutingContext()
-        let transformed = try await applyTransforms(to: request, context: context)
-        let decision = try await router.route(request: transformed, context: context)
+    /// Dispatches a routing decision to the matching backend for a streaming request.
+    internal func dispatchStream(_ decision: MixlRoutingDecision) async throws -> AsyncThrowingStream<ChatCompletionChunk, Error> {
         switch decision {
         case .cloud(let routedRequest):
             return try await cloudService.createChatCompletionStream(request: routedRequest)
         case .local(let routedRequest):
             return try await localService.createChatCompletionStream(request: routedRequest)
         }
-    }
-
-    /// Folds the request through the configured ``transforms`` in order, returning the result.
-    ///
-    /// Each transform receives the output of the previous one. A transform that throws aborts the
-    /// request before it reaches the router or any backend.
-    private func applyTransforms(
-        to request: ChatCompletionRequest,
-        context: MixlRoutingContext
-    ) async throws -> ChatCompletionRequest {
-        var current = request
-        for transform in transforms {
-            current = try await transform.process(request: current, context: context)
-        }
-        return current
     }
 
     private func makeRoutingContext() -> MixlRoutingContext {

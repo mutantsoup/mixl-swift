@@ -1,6 +1,6 @@
 # Mixl Roadmap
 
-Phase 1 (`0.1.0`), Phase 2 (`0.2.0`), and Phase 3 (`0.3.0`) are **shipped**. Later items are **sketches** — not implemented until they land in code. See **Potential Use Cases** for product ideas under consideration.
+Phases 1–6 (`0.1.0`–`0.6.0`) are **shipped**. Later items are **sketches** — not implemented until they land in code. See **Potential Use Cases** for product ideas under consideration.
 
 ---
 
@@ -44,6 +44,38 @@ Phase 1 (`0.1.0`), Phase 2 (`0.2.0`), and Phase 3 (`0.3.0`) are **shipped**. Lat
 
 ---
 
+## Phase 4 (shipped — `0.4.0`)
+
+- **Custom routers** under `Sources/Mixl/Routers/`: **`MixlLogicRouter`** (inline `async`/`throws` closure), **`MixlFallbackRouter`** (falls back to a configured cloud model when on-device inference is unavailable), and **`MixlPatternRouter`** (regex/PII gating, delegating to a default router when no rule matches).
+- **`MixlPatternRule`** with bundled best-effort PII rule factories: `.email`, `.usSSN`, `.creditCard`, `.phoneUS`, `.ipv4`.
+- **`ChatCompletionRequest.copy(withModel:)`** and **`Model.routed`** for routers that rewrite the target model.
+- **`proxy/`** — a dependency-free Node.js reference **key proxy** (standalone server plus AWS Lambda and GCP Cloud Functions handlers over a shared forwarding core) that keeps the MixLayer API key server-side, with masked per-request logging. The app uses `MixLayerClient` unchanged apart from `apiKey` (a user token) and `baseURL`.
+- **`MixlExamples`** — per-category source files, a `Quit` option in every menu, and a proxy run mode (`MIXLAYER_BASE_URL`) with an explicit `PROXY` / `DIRECT` banner.
+- **Docs** — README **Securing Your API Key** section, DocC <doc:Routing> article.
+- **Fix** — `MixlFallbackRouter` preserves the primary router's transformed local request when falling back to the cloud.
+
+---
+
+## Phase 5 (shipped — `0.5.0`)
+
+- **`MixlRequestTransform`** — a transform-only protocol for rewriting a `ChatCompletionRequest` before it is routed. Transforms answer "what payload?"; the `MixlRouter` still owns "which backend?".
+- **`MixlTransform`** — inline closure transform with a **`.mapContent(_:)`** convenience for rewriting message text; **`MixlClient(… transforms:)`** applies an ordered chain before routing (a throwing transform aborts the request).
+- **`ChatCompletionRequest.copy(withMessages:)`** and **`.mappingContent(_:)`** helpers, organized with the transform types under `Sources/Mixl/Transforms/`.
+- **Docs** — DocC <doc:Transforms> article; `MixlExamples` transform-chain example (filler stripping → redaction → logging).
+
+---
+
+## Phase 6 (shipped — `0.6.0`)
+
+- **Declarative prompt API** (`Sources/Mixl/Declarative/`) — a SwiftUI-style layer over `MixlClient`, pure syntactic sugar that resolves to a `ChatCompletionRequest` (plus an optional per-prompt router and transforms) and runs through the existing pipeline. The imperative `chat.create` API is unchanged.
+- **`PromptContent`** + **`PromptBuilder`** with leaf components `System` / `User` / `Assistant` / `ToolReply` (and raw `Message` passthrough), the **`Prompt`** container, and chainable modifiers covering the full request surface (sampling, thinking/reasoning, tools, response format), resolving innermost-wins like Apple's Foundation Models profiles.
+- **Routing & transform modifiers** (`.router`, `.fallback(to:)`, `.transform`, `.mapContent`) bridge Phases 4–5 into the declarative surface.
+- **`PromptComponent`** (reusable `body`-based prompts), **`PromptModifier`** (custom modifiers), a **tool-schema DSL** (`FunctionTool` / `Field`), **`MixlClient.run` / `.stream`** execution, and **`resolvedMessages()` / `resolvedTools()`** for previewing a composed prompt.
+- **`MixlClient`** refactored to a shared internal route/dispatch core used by both the imperative and declarative paths.
+- **Docs** — DocC <doc:Declarative> article, README Quick Start section; `MixlExamples` dedicated **Declarative API Examples** menu (cloud, on-device, and a two-model outline → paragraph chain).
+
+---
+
 ## Potential Use Cases
 
 Sketches only — **not implemented** until they land in code. More items will be added over time.
@@ -70,4 +102,4 @@ Sketches only — **not implemented** until they land in code. More items will b
 - Evaluation: how to measure compression quality (tests, golden prompts)?
 - Fallback: if compression fails, truncate, reject, or route entirely to cloud?
 
-**Status:** Concept only. Revisit when orchestrator work begins.
+**Status:** Concept only — no built-in compression or token-budget helper yet. The building blocks now exist: the `MixlClient` orchestrator (Phase 3), request transforms (Phase 5), and declarative chaining across models (Phase 6) make a manual cloud-compress → local-infer pipeline straightforward to assemble today. A first-class API would add an explicit token-budget and compression step on top.
