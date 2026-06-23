@@ -6,6 +6,8 @@ Route chat completions between the MixLayer cloud and on-device local backends w
 
 ``MixlClient`` is a unified orchestrator that conforms to ``MixlService`` and exposes the same `chat.create` / `chat.createStream` API as ``MixLayerClient`` and ``LocalClient``. For each request it consults a ``MixlRouter`` to decide which backend handles the call and what payload to send.
 
+> Tip: To rewrite the request payload *before* routing — cleaning up a prompt, redacting terms, injecting a preamble — use a ``MixlRequestTransform`` chain. Transforms run ahead of the router and are a separate concern from backend selection. See <doc:Transforms>.
+
 ```swift
 import Mixl
 

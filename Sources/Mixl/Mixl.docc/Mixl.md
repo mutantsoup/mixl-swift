@@ -18,6 +18,10 @@ Use ``LocalClient`` with ``Model/appleFoundation`` on iOS 26+, macOS 26+, and ot
 
 Use ``MixlClient`` to route a single `chat.create` / `chat.createStream` call to the cloud or on-device backend automatically. Supply a ``MixlRouter`` policy — ``MixlDefaultRouter`` (model-based), ``MixlLogicRouter`` (inline closure), ``MixlFallbackRouter`` (cloud fallback when local is down), or ``MixlPatternRouter`` (PII/regex gating) — or implement your own. See <doc:Routing>.
 
+### Transforming requests
+
+Rewrite the request payload before it is routed — clean up a voice-transcribed prompt, redact sensitive terms, or inject a shared preamble — with a chain of ``MixlRequestTransform`` values on ``MixlClient``. Use ``MixlTransform`` for inline closures and ``MixlTransform/mapContent(_:)`` for the common case of editing message text. See <doc:Transforms>.
+
 ### Thinking modes (cloud only)
 
 - **Non-thinking (default):** omit `thinking` and `reasoningEffort` for instruct-style responses.
@@ -68,6 +72,12 @@ For unit tests, add the `MixlTesting` product and inject `MockMixlService` throu
 - ``MixlPatternRouter``
 - ``MixlPatternRule``
 - ``Model/routed``
+
+### Transforming requests
+
+- <doc:Transforms>
+- ``MixlRequestTransform``
+- ``MixlTransform``
 
 ### Messages and Models
 

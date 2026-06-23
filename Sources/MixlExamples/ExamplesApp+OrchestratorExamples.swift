@@ -25,11 +25,12 @@ extension ExamplesApp {
             3. Direct cloud access (client.cloud) — bypass the router
             4. Direct local access (client.local) — bypass the router\(localOrchestratorAvailabilityNote())
             5. Custom Logic Router (checks prompt size locally vs cloud)
-            6. Run All Orchestrator Examples
-            7. Back to main menu
-            8. Quit
+            6. Request Transforms (clean a voice prompt + redact a term)
+            7. Run All Orchestrator Examples
+            8. Back to main menu
+            9. Quit
 
-            Enter selection (1-8):
+            Enter selection (1-9):
             """, terminator: "")
 
             guard let input = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines) else {
@@ -79,14 +80,17 @@ extension ExamplesApp {
                 await runCustomLogicRouterExample(connection: connection)
                 await waitForEnter()
             case "6":
-                await runAllOrchestratorExamples(client: client)
+                await runRequestTransformExample(connection: connection)
                 await waitForEnter()
             case "7":
-                shouldReturn = true
+                await runAllOrchestratorExamples(client: client)
+                await waitForEnter()
             case "8":
+                shouldReturn = true
+            case "9":
                 quit()
             default:
-                print("\n⚠️ Invalid selection. Please enter a number between 1 and 8.")
+                print("\n⚠️ Invalid selection. Please enter a number between 1 and 9.")
                 await waitForEnter()
             }
         }
@@ -140,6 +144,51 @@ extension ExamplesApp {
             print("\n✨ Routed Response:")
             print(response.choices.first?.message.content ?? "")
             print(String(format: "⏱️ Time taken: %.3f seconds", duration))
+        } catch {
+            print("\n❌ Error: \(error)")
+        }
+    }
+
+    static func runRequestTransformExample(connection: CloudConnection) async {
+        print("\n[Orchestrator Request Transforms] Cleaning the prompt before it is routed...")
+
+        // Transform 1: strip voice-transcription filler ("um", "uh", "erm") from every message.
+        let stripFiller = MixlTransform.mapContent { content in
+            content.replacingOccurrences(
+                of: "\\b(um+|uh+|erm+)\\b[,]?\\s*",
+                with: "",
+                options: [.regularExpression, .caseInsensitive]
+            )
+        }
+
+        // Transform 2: redact a sensitive code name before it leaves the device.
+        let redactCodeName = MixlTransform.mapContent { content in
+            content.replacingOccurrences(of: "Project Cerberus", with: "[REDACTED]")
+        }
+
+        // Transform 3: observe the final, transformed prompt (transforms compose left-to-right).
+        let logFinalPrompt = MixlTransform { request, _ in
+            let joined = request.messages.compactMap(\.content).joined(separator: " / ")
+            print("   [Transform Chain] Final prompt sent to backend: \"\(joined)\"")
+            return request
+        }
+
+        let client = makeOrchestratorClient(
+            connection,
+            transforms: [stripFiller, redactCodeName, logFinalPrompt]
+        )
+
+        let messy = "Um, so, uh, can you summarize Project Cerberus for me, erm, briefly?"
+        print("\n💬 Original (voice-transcribed) prompt:")
+        print("  \"\(messy)\"")
+
+        do {
+            let response = try await client.chat.create(
+                model: exampleModel,
+                messages: [.user(messy)]
+            )
+            print("\n✨ Response:")
+            print(response.choices.first?.message.content ?? "")
         } catch {
             print("\n❌ Error: \(error)")
         }

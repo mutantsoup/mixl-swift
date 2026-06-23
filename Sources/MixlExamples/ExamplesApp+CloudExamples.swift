@@ -120,8 +120,11 @@ extension ExamplesApp {
         print(mode.documentationNote)
         print("Sending request to model: \(exampleModel.rawValue)")
 
+        // With reasoning enabled, the reasoning stream *is* the step-by-step working, so we ask only
+        // for the answer — telling the final response to also "solve step-by-step" muddies the
+        // model's notion of what belongs in reasoning vs. content.
         let messages: [Message] = [
-            .user("If I have 3 apples, eat 1, and buy 4 more, how many apples do I have? Solve it step-by-step.")
+            .user("If I start with 3 apples, eat 1, then buy 4 more, how many apples do I have?")
         ]
 
         print("\n💬 Input Prompt:")
@@ -136,7 +139,11 @@ extension ExamplesApp {
                 messages: messages,
                 thinking: mode.thinking,
                 reasoningEffort: mode.reasoningEffort,
-                temperature: 1.0
+                // A moderate temperature suits a deterministic task and curbs the rambling/looping
+                // that high randomness can trigger; maxCompletionTokens is a hard cost ceiling so a
+                // runaway reasoning loop can't generate unbounded (expensive) output.
+                temperature: 0.5,
+                maxCompletionTokens: 800
             )
 
             print("\n🧠 Reasoning Stream:")

@@ -8,8 +8,10 @@ import Foundation
 ///
 /// ## Overview
 ///
-/// Under the hood, ``MixlClient`` acts as a dispatcher. It delegates requests to the injected ``MixlRouter``,
-/// which selects between the cloud or local service based on availability and constraints.
+/// Under the hood, ``MixlClient`` acts as a dispatcher. Each request first passes through an optional
+/// chain of ``MixlRequestTransform`` values (for rewriting the payload — e.g. cleaning up a
+/// voice-transcribed prompt or redacting sensitive terms), then is handed to the injected
+/// ``MixlRouter``, which selects between the cloud or local service based on availability and constraints.
 ///
 /// ## Example
 ///
@@ -40,6 +42,7 @@ public final class MixlClient: MixlService, Sendable {
     internal let cloudService: any MixlService
     internal let localService: any MixlService
     internal let router: any MixlRouter
+    internal let transforms: [any MixlRequestTransform]
 
     /// Whether ``localService`` was supplied by the caller.
     ///
@@ -62,6 +65,8 @@ public final class MixlClient: MixlService, Sendable {
     ///   - baseURL: The base URL of the API. Defaults to `https://models.mixlayer.ai/v1`.
     ///   - session: The `URLSession` used for network requests.
     ///   - router: The routing policy to use. Defaults to ``MixlDefaultRouter``.
+    ///   - transforms: An ordered chain of ``MixlRequestTransform`` applied to each request before
+    ///     routing. The output of one transform feeds the next. Defaults to an empty chain (no-op).
     ///   - cloudService: An optional ``MixlService`` implementation to inject for cloud testing.
     ///   - localService: An optional ``MixlService`` implementation to inject for local testing.
     public init(
@@ -69,12 +74,14 @@ public final class MixlClient: MixlService, Sendable {
         baseURL: URL = URL(string: "https://models.mixlayer.ai/v1")!,
         session: URLSession = .shared,
         router: any MixlRouter = MixlDefaultRouter(),
+        transforms: [any MixlRequestTransform] = [],
         cloudService: (any MixlService)? = nil,
         localService: (any MixlService)? = nil
     ) {
         self.apiKey = apiKey
         self.baseURL = baseURL
         self.router = router
+        self.transforms = transforms
         self.cloudService = cloudService ?? MixLayerAPIService(apiKey: apiKey, baseURL: baseURL, session: session)
         self.localServiceInjected = localService != nil
 
@@ -89,10 +96,11 @@ public final class MixlClient: MixlService, Sendable {
         #endif
     }
 
-    /// Submits a standard chat completion request, routing it according to the configured router.
+    /// Submits a standard chat completion request, transforming then routing it.
     public func createChatCompletion(request: ChatCompletionRequest) async throws -> ChatCompletionResponse {
         let context = makeRoutingContext()
-        let decision = try await router.route(request: request, context: context)
+        let transformed = try await applyTransforms(to: request, context: context)
+        let decision = try await router.route(request: transformed, context: context)
         switch decision {
         case .cloud(let routedRequest):
             return try await cloudService.createChatCompletion(request: routedRequest)
@@ -101,16 +109,32 @@ public final class MixlClient: MixlService, Sendable {
         }
     }
 
-    /// Submits a streaming chat completion request, routing it according to the configured router.
+    /// Submits a streaming chat completion request, transforming then routing it.
     public func createChatCompletionStream(request: ChatCompletionRequest) async throws -> AsyncThrowingStream<ChatCompletionChunk, Error> {
         let context = makeRoutingContext()
-        let decision = try await router.route(request: request, context: context)
+        let transformed = try await applyTransforms(to: request, context: context)
+        let decision = try await router.route(request: transformed, context: context)
         switch decision {
         case .cloud(let routedRequest):
             return try await cloudService.createChatCompletionStream(request: routedRequest)
         case .local(let routedRequest):
             return try await localService.createChatCompletionStream(request: routedRequest)
         }
+    }
+
+    /// Folds the request through the configured ``transforms`` in order, returning the result.
+    ///
+    /// Each transform receives the output of the previous one. A transform that throws aborts the
+    /// request before it reaches the router or any backend.
+    private func applyTransforms(
+        to request: ChatCompletionRequest,
+        context: MixlRoutingContext
+    ) async throws -> ChatCompletionRequest {
+        var current = request
+        for transform in transforms {
+            current = try await transform.process(request: current, context: context)
+        }
+        return current
     }
 
     private func makeRoutingContext() -> MixlRoutingContext {

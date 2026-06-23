@@ -86,6 +86,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`MixlFallbackRouter`** now copies the primary router's transformed local request when falling back to the cloud, instead of the original untransformed request.
 
+## [0.5.0] - 2026-06-23
+
+### Added
+
+- **`MixlRequestTransform`** — a transform-only protocol for rewriting a `ChatCompletionRequest` before it is routed. Transforms answer "what payload?" and run ahead of the `MixlRouter`, which still owns "which backend?"; they never select a backend.
+- **`MixlTransform`** — inline closure-based transform (the sibling of `MixlLogicRouter`), with a **`MixlTransform.mapContent(_:)`** convenience for the common case of rewriting message text. Messages with `nil` content pass through untouched and all other message fields are preserved.
+- **`MixlClient(… transforms:)`** — an ordered transform chain applied before routing; the output of one transform feeds the next, and a throwing transform aborts the request before it reaches the router or any backend. The direct `cloud` / `local` accessors bypass both the router and the transform chain.
+- **`ChatCompletionRequest.copy(withMessages:)`** and **`ChatCompletionRequest.mappingContent(_:)`** — helpers for transforming a request's messages while leaving sampling and routing parameters untouched.
+- New transform types organized under `Sources/Mixl/Transforms/` (one type per file).
+- **`MixlExamples`** unified orchestrator menu item demonstrating a transform chain — voice-transcription filler stripping, sensitive-term redaction, and a final-prompt logging transform composed left-to-right.
+- DocC <doc:Transforms> article, a Transforms topics group, and a README feature entry.
+- `MixlRequestTransformTests` covering chain ordering, routing-context plumbing, throwing-aborts-the-request, streaming, and `mapContent` field-preservation semantics.
+
+### Changed
+
+- **`MixlExamples`** — the streaming-reasoning example now uses a cleaner prompt (dropped the redundant "solve it step-by-step", since the reasoning stream already shows the working), a lower `temperature` (`0.5`), and a `maxCompletionTokens` ceiling as a guardrail against runaway reasoning loops on the free-tier model.
+
+[0.5.0]: https://github.com/mutantsoup/mixl-swift/releases/tag/0.5.0
 [0.4.0]: https://github.com/mutantsoup/mixl-swift/releases/tag/0.4.0
 [0.3.0]: https://github.com/mutantsoup/mixl-swift/releases/tag/0.3.0
 [0.2.0]: https://github.com/mutantsoup/mixl-swift/releases/tag/0.2.0

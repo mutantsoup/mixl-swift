@@ -27,6 +27,7 @@
 - [x] **Zero External Dependencies**: Pure Swift code built on top of Apple's foundation frameworks (`URLSession`, `Codable`).
 - [x] **On-Device Foundation Models** (macOS 26+ / iOS 26+): `LocalClient` with the same `chat.create` / `chat.createStream` API shape as `MixLayerClient`, backed by Apple's Foundation Models framework.
 - [x] **Unified Routing**: `MixlClient` orchestrates a single API across cloud and on-device backends via a pluggable `MixlRouter` — model-based default, inline closure (`MixlLogicRouter`), cloud fallback (`MixlFallbackRouter`), and regex/PII gating (`MixlPatternRouter`) with bundled PII rule factories.
+- [x] **Request Transforms**: Rewrite the request payload before it is routed via a chain of `MixlRequestTransform` — clean up voice-transcribed prompts, redact sensitive terms, or inject a shared preamble. Use `MixlTransform` for inline closures and `MixlTransform.mapContent` to edit message text.
 
 ---
 

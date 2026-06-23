@@ -80,14 +80,18 @@ extension ExamplesApp {
         return MixLayerClient(apiKey: connection.token)
     }
 
-    /// Builds an orchestrator client for the resolved connection, optionally with a custom router.
-    static func makeOrchestratorClient(_ connection: CloudConnection, router: (any MixlRouter)? = nil) -> MixlClient {
-        switch (connection.baseURL, router) {
-        case let (baseURL?, router?): return MixlClient(apiKey: connection.token, baseURL: baseURL, router: router)
-        case let (baseURL?, nil):     return MixlClient(apiKey: connection.token, baseURL: baseURL)
-        case let (nil, router?):      return MixlClient(apiKey: connection.token, router: router)
-        case (nil, nil):              return MixlClient(apiKey: connection.token)
+    /// Builds an orchestrator client for the resolved connection, optionally with a custom router
+    /// and request transform chain.
+    static func makeOrchestratorClient(
+        _ connection: CloudConnection,
+        router: (any MixlRouter)? = nil,
+        transforms: [any MixlRequestTransform] = []
+    ) -> MixlClient {
+        let resolvedRouter = router ?? MixlDefaultRouter()
+        if let baseURL = connection.baseURL {
+            return MixlClient(apiKey: connection.token, baseURL: baseURL, router: resolvedRouter, transforms: transforms)
         }
+        return MixlClient(apiKey: connection.token, router: resolvedRouter, transforms: transforms)
     }
 
     /// A banner that makes the active connection mode unmistakable, credential masked.

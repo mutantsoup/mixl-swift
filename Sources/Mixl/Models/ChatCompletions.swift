@@ -174,6 +174,55 @@ extension ChatCompletionRequest {
             responseFormat: responseFormat
         )
     }
+
+    /// Helper to create a copy of the request with a different message list.
+    ///
+    /// Useful when transforming a request (for example in a ``MixlRequestTransform``) while leaving
+    /// all sampling and routing parameters untouched.
+    public func copy(withMessages newMessages: [Message]) -> ChatCompletionRequest {
+        ChatCompletionRequest(
+            model: model,
+            messages: newMessages,
+            thinking: thinking,
+            reasoningEffort: reasoningEffort,
+            temperature: temperature,
+            topP: topP,
+            topK: topK,
+            frequencyPenalty: frequencyPenalty,
+            presencePenalty: presencePenalty,
+            repetitionPenalty: repetitionPenalty,
+            maxCompletionTokens: maxCompletionTokens,
+            maxTokens: maxTokens,
+            stop: stop,
+            seed: seed,
+            stream: stream,
+            tools: tools,
+            responseFormat: responseFormat
+        )
+    }
+
+    /// Returns a copy of the request with `transform` applied to every message's text content.
+    ///
+    /// Messages with `nil` content are passed through unchanged; all other message fields are
+    /// preserved. Backs ``MixlTransform/mapContent(_:)`` and is convenient for any content-only
+    /// rewrite (filler-word removal, term redaction, casing normalization, etc.).
+    ///
+    /// - Parameter transform: A closure mapping each message's content string to its replacement.
+    /// - Returns: A new request with rewritten message content.
+    public func mappingContent(_ transform: (String) -> String) -> ChatCompletionRequest {
+        let rewritten = messages.map { message -> Message in
+            guard let content = message.content else { return message }
+            return Message(
+                role: message.role,
+                content: transform(content),
+                reasoningContent: message.reasoningContent,
+                name: message.name,
+                toolCalls: message.toolCalls,
+                toolCallId: message.toolCallId
+            )
+        }
+        return copy(withMessages: rewritten)
+    }
 }
 
 /// A structure representing a tool the model can invoke.
